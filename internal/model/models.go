@@ -67,6 +67,18 @@ type TournamentPlayer struct {
     JoinedAt  time.Time `json:"joined_at"`
 }
 
+// GameInvite представляет приглашение на игру
+type GameInvite struct {
+	ID            string    `json:"id"`
+	GameType      string    `json:"game_type"`
+	InviterSID    string    `json:"inviter_sid"`
+	RecipientSID  string    `json:"recipient_sid"`
+	Status        string    `json:"status"`
+	MatchID       *string   `json:"match_id,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
+	ExpiresAt     time.Time `json:"expires_at"`
+}
+
 // Match представляет матч
 type Match struct {
     ID            string    `json:"id"`

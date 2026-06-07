@@ -25,7 +25,7 @@ func TestGameRoomChessEngine(t *testing.T) {
 	room := NewGameRoom("match-1", "chess")
 
 	// Check initial state
-	state := room.buildStatePayload()
+	state := room.BuildStatePayload()
 	if state["turn"] != "white" {
 		t.Errorf("chess should start with white's turn, got %v", state["turn"])
 	}
@@ -37,7 +37,7 @@ func TestGameRoomChessEngine(t *testing.T) {
 func TestGameRoomCheckersEngine(t *testing.T) {
 	room := NewGameRoom("match-1", "checkers")
 
-	state := room.buildStatePayload()
+	state := room.BuildStatePayload()
 	if state["turn"] != "white" {
 		t.Errorf("checkers should start with white's turn, got %v", state["turn"])
 	}
@@ -46,7 +46,7 @@ func TestGameRoomCheckersEngine(t *testing.T) {
 func TestGameRoomBackgammonEngine(t *testing.T) {
 	room := NewGameRoom("match-1", "backgammon")
 
-	state := room.buildStatePayload()
+	state := room.BuildStatePayload()
 	if state["turn"] != "white" {
 		t.Errorf("backgammon should start with white's turn, got %v", state["turn"])
 	}
@@ -59,7 +59,7 @@ func TestGameRoomUnknownType(t *testing.T) {
 		t.Errorf("expected game_type unknown, got %s", room.GameType())
 	}
 	// Should still have a working engine
-	state := room.buildStatePayload()
+	state := room.BuildStatePayload()
 	if state["board"] == "" {
 		t.Error("even unknown type should have a board")
 	}
@@ -254,7 +254,7 @@ func TestClockSetTime(t *testing.T) {
 
 func TestGameStatePayloadSerialization(t *testing.T) {
 	room := NewGameRoom("match-1", "chess")
-	state := room.buildStatePayload()
+	state := room.BuildStatePayload()
 
 	data, err := json.Marshal(state)
 	if err != nil {

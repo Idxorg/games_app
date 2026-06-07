@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { ArrowLeft, Users, Clock, Search } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
@@ -5,12 +6,15 @@ import { ChessPiece } from '../components/ui/ChessPiece'
 import { LiveIndicator } from '../components/ui/LiveIndicator'
 import { useGameStore } from '../stores/gameStore'
 import { useToastStore } from '../components/ui/Toast'
+import { InvitePlayerModal } from '../components/game/InvitePlayerModal'
+import { InviteIncomingBanner } from '../components/game/InviteIncomingBanner'
 
 export function Game() {
   const { gameId } = useParams<{ gameId: string }>()
   const { games } = useGameStore()
   const game = games.find((g) => g.id === gameId)
   const addToast = useToastStore((s) => s.addToast)
+  const [inviteOpen, setInviteOpen] = useState(false)
 
   if (!game) {
     return (
@@ -25,7 +29,7 @@ export function Game() {
   }
 
   const handleFindMatch = () => {
-    addToast('Поиск матча скоро будет доступен', 'info')
+    setInviteOpen(true)
   }
 
   const handleStartPlay = () => {
@@ -39,6 +43,9 @@ export function Game() {
           <ArrowLeft size={16} />
           Все игры
         </Link>
+
+        {/* Incoming invite banner */}
+        <InviteIncomingBanner />
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Game Info */}
@@ -149,6 +156,13 @@ export function Game() {
           </div>
         </div>
       </div>
+
+      {/* Invite player modal */}
+      <InvitePlayerModal
+        isOpen={inviteOpen}
+        onClose={() => setInviteOpen(false)}
+        gameType={gameId}
+      />
     </div>
   )
 }

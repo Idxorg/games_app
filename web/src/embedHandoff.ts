@@ -13,6 +13,8 @@ import { embedAuth } from './api/auth'
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
+export type InviteEventHandler = (inviteId: string) => void
+
 export interface GamesEmbedSessionPayload {
   type: 'erlink_games_embed_session'
   sid: string
@@ -111,4 +113,43 @@ export async function exchangeEmbedToken(
     session.embed_handoff_secret,
   )
   return result
+}
+
+// ─── PostMessage invite event listeners ────────────────────────────────────
+
+let _onInviteAccept: InviteEventHandler | null = null
+let _onInviteDecline: InviteEventHandler | null = null
+
+function onInvitePostMessage(event: MessageEvent) {
+  const data = event.data
+  if (!data || typeof data !== 'object') return
+
+  if (data.type === 'erlink_games_invite_accept' && data.invite_id) {
+    _onInviteAccept?.(String(data.invite_id))
+  }
+  if (data.type === 'erlink_games_invite_decline' && data.invite_id) {
+    _onInviteDecline?.(String(data.invite_id))
+  }
+}
+
+/**
+ * Register callbacks for invite postMessage events from the parent iframe.
+ * Call these during app initialization to handle parent-driven invite actions.
+ */
+export function onInviteAccept(handler: InviteEventHandler): void {
+  _onInviteAccept = handler
+  ensureInviteListener()
+}
+
+export function onInviteDecline(handler: InviteEventHandler): void {
+  _onInviteDecline = handler
+  ensureInviteListener()
+}
+
+let _inviteListenerAttached = false
+
+function ensureInviteListener(): void {
+  if (_inviteListenerAttached) return
+  window.addEventListener('message', onInvitePostMessage)
+  _inviteListenerAttached = true
 }

@@ -2,9 +2,12 @@ package websocket
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
+
+	"game-platform/internal/model"
 
 	"github.com/gorilla/websocket"
 )
@@ -13,31 +16,38 @@ import (
 type GameRoom struct {
 	mu sync.Mutex
 
-	matchID    string
-	gameType   string
-	player1SID string
-	player2SID string
+	matchID     string
+	gameType    string
+	player1SID  string
+	player2SID  string
 	player1Conn *websocket.Conn
 	player2Conn *websocket.Conn
 
 	engine GameEngineAdapter
 	clock  *Clock
 
-	gameOver     bool
+	gameOver       bool
 	gameOverReason string
-	winnerSID    string
+	winnerSID      string
 
 	drawOfferSID string // SID of the player offering a draw
 
 	clockStopCh chan struct{}
+
+	// Persistence
+	matchRepo   model.MatchRepo
+	moveHistory []map[string]interface{} // tracked moves for match persistence
+
+	// Test hook: when non-nil, all broadcast/error messages are also sent here.
+	TestMsgCh chan []byte
 }
 
 // NewGameRoom creates a new game room.
 func NewGameRoom(matchID, gameType string) *GameRoom {
 	room := &GameRoom{
-		matchID:  matchID,
-		gameType: gameType,
-		clock:    NewDefaultClock(),
+		matchID:     matchID,
+		gameType:    gameType,
+		clock:       NewDefaultClock(),
 		clockStopCh: make(chan struct{}),
 	}
 
@@ -56,6 +66,18 @@ func NewGameRoom(matchID, gameType string) *GameRoom {
 	return room
 }
 
+// SetMatchRepo sets the match repository for persistence.
+func (r *GameRoom) SetMatchRepo(repo model.MatchRepo) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.matchRepo = repo
+}
+
+// Engine returns the game engine adapter (for testing/introspection).
+func (r *GameRoom) Engine() GameEngineAdapter {
+	return r.engine
+}
+
 // MatchID returns the match ID.
 func (r *GameRoom) MatchID() string {
 	return r.matchID
@@ -70,7 +92,7 @@ func (r *GameRoom) GameType() string {
 func (r *GameRoom) IsFull() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.player1Conn != nil && r.player2Conn != nil
+	return r.player1SID != "" && r.player2SID != ""
 }
 
 // IsGameOver returns true if the game is over.
@@ -89,11 +111,11 @@ func (r *GameRoom) JoinPlayer(sid string, conn *websocket.Conn) error {
 		return sendError(conn, "game_over", "game has already ended")
 	}
 
-	if r.player1Conn == nil {
+	if r.player1SID == "" {
 		r.player1SID = sid
 		r.player1Conn = conn
 		slog.Info("player 1 joined room", "match_id", r.matchID, "sid", sid)
-	} else if r.player2Conn == nil {
+	} else if r.player2SID == "" {
 		r.player2SID = sid
 		r.player2Conn = conn
 		slog.Info("player 2 joined room", "match_id", r.matchID, "sid", sid)
@@ -136,6 +158,10 @@ func (r *GameRoom) HandleMove(sid string, moveData json.RawMessage) {
 	// Verify it's this player's turn
 	turn := r.engine.GetTurn()
 	color := r.GetPlayerColorUnlocked(sid)
+	if color == "" {
+		r.sendToPlayer(sid, errorPayload("not_in_game", "you are not in this game"))
+		return
+	}
 	if color != turn {
 		r.sendToPlayer(sid, errorPayload("not_your_turn", "it is not your turn"))
 		return
@@ -152,6 +178,14 @@ func (r *GameRoom) HandleMove(sid string, moveData json.RawMessage) {
 		r.sendToPlayer(sid, errorPayload("illegal_move", err.Error()))
 		return
 	}
+
+	// Track move in history for persistence
+	r.moveHistory = append(r.moveHistory, map[string]interface{}{
+		"sid":   sid,
+		"from":  move.From,
+		"to":    move.To,
+		"color": color,
+	})
 
 	// Switch clock and add increment
 	r.clock.SwitchPlayer(turn, DefaultIncrement)
@@ -197,6 +231,7 @@ func (r *GameRoom) HandleResign(sid string) {
 	slog.Info("player resigned", "match_id", r.matchID, "sid", sid, "color", color)
 
 	r.broadcastGameOver()
+	r.persistGameComplete()
 }
 
 // HandleDrawOffer processes a draw offer.
@@ -206,6 +241,18 @@ func (r *GameRoom) HandleDrawOffer(sid string) {
 
 	if r.gameOver {
 		r.sendToPlayer(sid, errorPayload("game_over", "game has already ended"))
+		return
+	}
+
+	// If the other player already offered, this is a mutual draw
+	if r.drawOfferSID != "" && r.drawOfferSID != sid {
+		r.clock.Stop()
+		r.gameOver = true
+		r.gameOverReason = "draw"
+		r.winnerSID = ""
+		slog.Info("mutual draw", "match_id", r.matchID)
+		r.broadcastGameOver()
+		r.persistGameComplete()
 		return
 	}
 
@@ -250,10 +297,12 @@ func (r *GameRoom) HandleDrawAccept(sid string) {
 	r.gameOver = true
 	r.gameOverReason = "draw"
 	r.winnerSID = ""
+	r.drawOfferSID = ""
 
 	slog.Info("draw accepted", "match_id", r.matchID)
 
 	r.broadcastGameOver()
+	r.persistGameComplete()
 }
 
 // HandleDrawDecline processes a draw decline.
@@ -303,6 +352,15 @@ func (r *GameRoom) HandleRollDice(sid string) {
 		"dice":     dice,
 	})
 	r.broadcast(msg)
+}
+
+// GetMoveHistory returns the move history (for persistence/testing).
+func (r *GameRoom) GetMoveHistory() []map[string]interface{} {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	result := make([]map[string]interface{}, len(r.moveHistory))
+	copy(result, r.moveHistory)
+	return result
 }
 
 // Cleanup cleans up room resources when the room is destroyed.
@@ -357,6 +415,7 @@ func (r *GameRoom) runClock() {
 						r.winnerSID = r.player1SID
 					}
 					r.broadcastGameOver()
+					r.persistGameComplete()
 					slog.Info("timeout", "match_id", r.matchID, "timeout_color", timeoutColor)
 				}
 				r.mu.Unlock()
@@ -383,12 +442,38 @@ func (r *GameRoom) handleEngineGameOver() {
 
 	r.clock.Stop()
 	r.broadcastGameOver()
+	r.persistGameComplete()
 	slog.Info("game over (engine)", "match_id", r.matchID, "reason", r.gameOverReason, "winner", winner)
+}
+
+// persistGameComplete persists the game result to the match repo if available.
+// Must be called with r.mu held.
+func (r *GameRoom) persistGameComplete() {
+	if r.matchRepo == nil {
+		return
+	}
+
+	score := "0-0"
+	if r.winnerSID != "" {
+		if r.winnerSID == r.player1SID {
+			score = "1-0"
+		} else {
+			score = "0-1"
+		}
+	}
+
+	movesJSON, _ := json.Marshal(r.moveHistory)
+	go func() {
+		err := r.matchRepo.Complete(nil, r.matchID, r.winnerSID, score, movesJSON)
+		if err != nil {
+			slog.Error("failed to persist game complete", "match_id", r.matchID, "error", err)
+		}
+	}()
 }
 
 // broadcastState sends the full game state to both players.
 func (r *GameRoom) broadcastState() {
-	state := r.buildStatePayload()
+	state := r.BuildStatePayload()
 	data, err := json.Marshal(state)
 	if err != nil {
 		slog.Error("failed to marshal state", "error", err)
@@ -403,7 +488,7 @@ func (r *GameRoom) broadcastMoveApplied(move WSMove) {
 		"type":     "move_applied",
 		"match_id": r.matchID,
 		"move":     move,
-		"state":    r.buildStatePayload(),
+		"state":    r.BuildStatePayload(),
 	}
 	data, err := json.Marshal(moveApplied)
 	if err != nil {
@@ -425,11 +510,11 @@ func (r *GameRoom) broadcastGameOver() {
 	}
 
 	msg := map[string]interface{}{
-		"type":     "game_over",
-		"match_id": r.matchID,
+		"type":       "game_over",
+		"match_id":   r.matchID,
 		"winner_sid": r.winnerSID,
-		"score":    score,
-		"reason":   r.gameOverReason,
+		"score":      score,
+		"reason":     r.gameOverReason,
 	}
 	data, err := json.Marshal(msg)
 	if err != nil {
@@ -439,17 +524,17 @@ func (r *GameRoom) broadcastGameOver() {
 	r.broadcast(data)
 }
 
-// buildStatePayload builds the state message payload.
-func (r *GameRoom) buildStatePayload() map[string]interface{} {
+// BuildStatePayload builds the state message payload.
+func (r *GameRoom) BuildStatePayload() map[string]interface{} {
 	return map[string]interface{}{
-		"type":          "state",
-		"match_id":      r.matchID,
-		"game_type":     r.gameType,
-		"board":         r.engine.GetBoard(),
-		"turn":          r.engine.GetTurn(),
-		"player1_sid":   r.player1SID,
-		"player2_sid":   r.player2SID,
-		"legal_moves":   r.engine.GetLegalMoves(),
+		"type":        "state",
+		"match_id":    r.matchID,
+		"game_type":   r.gameType,
+		"board":       r.engine.GetBoard(),
+		"turn":        r.engine.GetTurn(),
+		"player1_sid": r.player1SID,
+		"player2_sid": r.player2SID,
+		"legal_moves": r.engine.GetLegalMoves(),
 		"clock": map[string]int64{
 			"white_ms": r.clock.WhiteMs(),
 			"black_ms": r.clock.BlackMs(),
@@ -470,6 +555,14 @@ func (r *GameRoom) sendToPlayer(sid string, message []byte) {
 	if conn != nil {
 		conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 		conn.WriteMessage(websocket.TextMessage, message)
+	}
+
+	// Test hook: capture message
+	if r.TestMsgCh != nil {
+		select {
+		case r.TestMsgCh <- message:
+		default:
+		}
 	}
 }
 
@@ -504,11 +597,14 @@ func (r *GameRoom) getOpponentSID(sid string) string {
 	return ""
 }
 
-// sendError sends an error message to a connection.
+// sendError sends an error message to a connection. Handles nil conn gracefully.
 func sendError(conn *websocket.Conn, code, message string) error {
 	msg := errorPayload(code, message)
-	conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-	return conn.WriteMessage(websocket.TextMessage, msg)
+	if conn != nil {
+		conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+		return conn.WriteMessage(websocket.TextMessage, msg)
+	}
+	return fmt.Errorf("%s: %s", code, message)
 }
 
 func errorPayload(code, message string) []byte {

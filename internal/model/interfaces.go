@@ -54,6 +54,16 @@ type RatingRepo interface {
 	GetByDepartment(ctx context.Context, gameType, department string) ([]PlayerRating, error)
 }
 
+// InviteRepo defines the invite repository interface.
+type InviteRepo interface {
+	Create(ctx context.Context, invite *GameInvite) error
+	GetByID(ctx context.Context, id string) (*GameInvite, error)
+	GetPendingByRecipient(ctx context.Context, sid string) ([]GameInvite, error)
+	Accept(ctx context.Context, id string, matchID string) error
+	Decline(ctx context.Context, id string) error
+	ExpireOld(ctx context.Context) error
+}
+
 // S3Service defines the S3 storage service interface.
 type S3Service interface {
 	UploadAvatar(ctx context.Context, sid string, data []byte) (string, error)

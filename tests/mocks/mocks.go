@@ -282,3 +282,91 @@ func (m *MockRatingRepo) GetLeaderboard(_ context.Context, gameType string, limi
 func (m *MockRatingRepo) GetByDepartment(_ context.Context, gameType, department string) ([]model.PlayerRating, error) {
 	return nil, nil
 }
+
+// MockInviteRepo — in-memory mock
+type MockInviteRepo struct {
+	mu      sync.RWMutex
+	invites map[string]*model.GameInvite
+	nextID  int
+}
+
+func NewMockInviteRepo() *MockInviteRepo {
+	return &MockInviteRepo{invites: make(map[string]*model.GameInvite)}
+}
+
+func (m *MockInviteRepo) Create(_ context.Context, invite *model.GameInvite) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.nextID++
+	invite.ID = fmt.Sprintf("inv_%03d", m.nextID)
+	if invite.Status == "" {
+		invite.Status = "pending"
+	}
+	if invite.CreatedAt.IsZero() {
+		invite.CreatedAt = time.Now()
+	}
+	m.invites[invite.ID] = invite
+	return nil
+}
+
+func (m *MockInviteRepo) GetByID(_ context.Context, id string) (*model.GameInvite, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	invite, ok := m.invites[id]
+	if !ok {
+		return nil, nil
+	}
+	return invite, nil
+}
+
+func (m *MockInviteRepo) GetPendingByRecipient(_ context.Context, sid string) ([]model.GameInvite, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var result []model.GameInvite
+	for _, inv := range m.invites {
+		if inv.RecipientSID == sid && inv.Status == "pending" && inv.ExpiresAt.After(time.Now()) {
+			result = append(result, *inv)
+		}
+	}
+	return result, nil
+}
+
+func (m *MockInviteRepo) Accept(_ context.Context, id string, matchID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	invite, ok := m.invites[id]
+	if !ok {
+		return fmt.Errorf("not found")
+	}
+	if invite.Status != "pending" {
+		return fmt.Errorf("not pending")
+	}
+	invite.Status = "accepted"
+	invite.MatchID = &matchID
+	return nil
+}
+
+func (m *MockInviteRepo) Decline(_ context.Context, id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	invite, ok := m.invites[id]
+	if !ok {
+		return fmt.Errorf("not found")
+	}
+	if invite.Status != "pending" {
+		return fmt.Errorf("not pending")
+	}
+	invite.Status = "declined"
+	return nil
+}
+
+func (m *MockInviteRepo) ExpireOld(_ context.Context) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, inv := range m.invites {
+		if inv.Status == "pending" && inv.ExpiresAt.Before(time.Now()) {
+			inv.Status = "expired"
+		}
+	}
+	return nil
+}

@@ -58,8 +58,19 @@ func main() {
 	protected.Use(middleware.Authenticate(cfg.JWT.Secret))
 
 	// --- WebSocket game rooms ---
-	roomManager := websocket.NewRoomManager()
+	// RoomManager with JWT secret for query param auth and matchRepo for persistence.
+	// WS clients can authenticate either via:
+	//   1. Bearer token (through the middleware on the protected group), or
+	//   2. Query parameter ?token=JWT (directly on the WS endpoint)
+	roomManager := websocket.NewRoomManagerWithDeps(cfg.JWT.Secret, nil)
 	protected.GET("/ws/game/:match_id", roomManager.HandleWebSocket)
+
+	// --- Game invite routes ---
+	inviteHandler := handler.NewInviteHandler(nil, nil)
+	protected.POST("/api/v1/games/invite", inviteHandler.CreateInvite)
+	protected.POST("/api/v1/games/invite/:id/accept", inviteHandler.AcceptInvite)
+	protected.POST("/api/v1/games/invite/:id/decline", inviteHandler.DeclineInvite)
+	protected.GET("/api/v1/games/invite/pending", inviteHandler.GetPendingInvites)
 
 	_ = os.Stdout // avoid unused import issues if needed later
 
