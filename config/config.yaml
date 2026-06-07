@@ -1,0 +1,28 @@
+server:
+  port: 8000
+  host: "0.0.0.0"
+
+database:
+  url: "postgresql://game:***@localhost:5432/game_platform?sslmode=disable"
+
+redis:
+  url: "localhost:6379"
+
+s3:
+  endpoint: "https://s3.yakbson.digital"
+  bucket: "yakbson-games"
+  access_key: "your-access-key"
+  secret_key: "your-secret-key"
+
+livekit:
+  url: "https://livekit.yakbson.digital"
+  api_key: "your-api-key"
+  api_secret: "your-api-secret"
+
+portal:
+  api_url: "https://portal.yakbson.digital/api"
+  api_key: "your-api-key"
+  oidc_jwks_url: "https://portal.yakbson.digital/.well-known/jwks.json"
+
+jwt:
+  secret: "your-jwt-secret-change-in-production"
