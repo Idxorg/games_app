@@ -106,7 +106,7 @@ func main() {
 	authHandler := handler.NewAuthHandler(userRepo, portalAPI)
 	authHandler.SetJWTSecret(cfg.JWT.Secret)
 
-	userHandler := handler.NewUserHandler(userRepo, nil)
+	userHandler := handler.NewUserHandler(userRepo, nil, matchRepo, tournamentRepo)
 
 	gameHandler := handler.NewGameHandler(matchRepo, ratingSvc)
 

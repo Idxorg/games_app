@@ -34,6 +34,7 @@ type TournamentRepo interface {
 	AddPlayer(ctx context.Context, tournamentID, sid string) error
 	RemovePlayer(ctx context.Context, tournamentID, sid string) error
 	GetPlayers(ctx context.Context, tournamentID string) ([]TournamentPlayer, error)
+	CountPlayerTournaments(ctx context.Context, sid string) (int, error)
 }
 
 // MatchRepo defines the match repository interface.
@@ -44,6 +45,7 @@ type MatchRepo interface {
 	ListByTournament(ctx context.Context, tournamentID string) ([]Match, error)
 	ListByPlayer(ctx context.Context, sid string) ([]Match, error)
 	Complete(ctx context.Context, id, winnerID, score string, movesJSON []byte) error
+	GetPlayerStats(ctx context.Context, sid string) (*PlayerStats, error)
 }
 
 // RatingRepo defines the rating repository interface.

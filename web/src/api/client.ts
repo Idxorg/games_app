@@ -185,3 +185,31 @@ export function put<T>(path: string, body?: unknown): Promise<T> {
 export function del<T>(path: string): Promise<T> {
   return request<T>(path, { method: 'DELETE' })
 }
+
+// ─── Identity directory search ────────────────────────────────────────────
+
+const IDENTITY_BASE_URL =
+  import.meta.env.VITE_IDENTITY_DIRECTORY_URL || 'http://identity-api:8080'
+
+export interface DirectoryEntry {
+  sid: string
+  name: string
+  department: string
+  photo_url?: string
+}
+
+export async function directorySearch(query: string): Promise<DirectoryEntry[]> {
+  if (!query.trim()) return []
+  const url = `${IDENTITY_BASE_URL}/identity-api/v1/directory/search?q=${encodeURIComponent(query.trim())}`
+  const token = getToken()
+  const headers: Record<string, string> = {}
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+  const res = await fetch(url, { headers })
+  if (!res.ok) {
+    // Directory search failures are non-critical — return empty
+    return []
+  }
+  return res.json()
+}

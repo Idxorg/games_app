@@ -153,6 +153,18 @@ func (m *MockTournamentRepo) GetPlayers(_ context.Context, tournamentID string) 
 	return result, nil
 }
 
+func (m *MockTournamentRepo) CountPlayerTournaments(_ context.Context, sid string) (int, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	count := 0
+	for _, players := range m.players {
+		if _, ok := players[sid]; ok {
+			count++
+		}
+	}
+	return count, nil
+}
+
 // MockMatchRepo — in-memory mock
 type MockMatchRepo struct {
 	mu     sync.RWMutex
@@ -234,6 +246,29 @@ func (m *MockMatchRepo) Complete(_ context.Context, id, winnerID, score string, 
 	now := time.Now()
 	match.CompletedAt = &now
 	return nil
+}
+
+func (m *MockMatchRepo) GetPlayerStats(_ context.Context, sid string) (*model.PlayerStats, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var stats model.PlayerStats
+	for _, match := range m.matches {
+		if match.Player1SID != sid && match.Player2SID != sid {
+			continue
+		}
+		if match.Status != "completed" {
+			continue
+		}
+		stats.GamesPlayed++
+		if match.WinnerSID == "" || match.WinnerSID == "0" {
+			stats.Draws++
+		} else if match.WinnerSID == sid {
+			stats.Wins++
+		} else {
+			stats.Losses++
+		}
+	}
+	return &stats, nil
 }
 
 // MockRatingRepo — in-memory mock

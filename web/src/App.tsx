@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { BrowserRouter, Routes, Route, useLocation, Link } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, useLocation, useNavigate, Link } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Home, ArrowLeft } from 'lucide-react'
 import { Layout } from './components/layout/Layout'
@@ -11,7 +11,8 @@ import { Profile } from './pages/Profile'
 import { Game } from './pages/Game'
 import { ToastContainer } from './components/ui/Toast'
 import { useUserStore } from './stores/userStore'
-import { isEmbedMode } from './embedHandoff'
+import { useInviteStore } from './stores/inviteStore'
+import { isEmbedMode, getHandoffTheme, onInviteAccept, onInviteDecline } from './embedHandoff'
 
 function NotFound() {
   return (
@@ -58,6 +59,38 @@ function AnimatedRoutes() {
   )
 }
 
+/** Wire postMessage invite handlers inside Router context (needs useNavigate) */
+function InviteHandler() {
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    onInviteAccept(async (inviteId: string) => {
+      const store = useInviteStore.getState()
+      // Look up game_type from pending invites before accepting
+      const invite = store.pendingInvites.find((i) => i.id === inviteId)
+      const gameType = invite?.game_type || 'chess'
+      try {
+        await store.accept(inviteId)
+        // Navigate to the game lobby after accept; once a matchId is available
+        // the Game component will auto-connect via WebSocket
+        navigate(`/game/${gameType}`)
+      } catch (err) {
+        console.error('Failed to accept invite:', err)
+      }
+    })
+
+    onInviteDecline(async (inviteId: string) => {
+      try {
+        await useInviteStore.getState().decline(inviteId)
+      } catch (err) {
+        console.error('Failed to decline invite:', err)
+      }
+    })
+  }, [navigate])
+
+  return null
+}
+
 export default function App() {
   const initialize = useUserStore((s) => s.initialize)
   const loading = useUserStore((s) => s.loading)
@@ -67,14 +100,20 @@ export default function App() {
     initialize()
   }, [initialize])
 
-  // Apply theme class to document
+  // Apply theme class + data-theme attribute to document
   useEffect(() => {
-    if (theme === 'light') {
+    // Prefer handoff theme from postMessage, fall back to userStore theme
+    const effectiveTheme = getHandoffTheme() || theme
+    if (effectiveTheme === 'light') {
       document.documentElement.classList.add('theme-light')
       document.documentElement.classList.remove('theme-dark')
-    } else if (theme === 'dark') {
+      document.documentElement.setAttribute('data-theme', 'light')
+    } else if (effectiveTheme === 'dark') {
       document.documentElement.classList.add('theme-dark')
       document.documentElement.classList.remove('theme-light')
+      document.documentElement.setAttribute('data-theme', 'dark')
+    } else {
+      document.documentElement.removeAttribute('data-theme')
     }
   }, [theme])
 
@@ -89,6 +128,7 @@ export default function App() {
 
   return (
     <BrowserRouter basename={isEmbedMode() ? '/games' : undefined}>
+      <InviteHandler />
       <AnimatedRoutes />
       <ToastContainer />
     </BrowserRouter>

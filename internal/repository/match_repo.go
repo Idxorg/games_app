@@ -135,3 +135,23 @@ func (r *MatchRepository) Complete(ctx context.Context, id, winnerID, score stri
 	`, id, winnerID, score, movesJSON)
 	return err
 }
+
+// GetPlayerStats returns aggregated game statistics for a player.
+func (r *MatchRepository) GetPlayerStats(ctx context.Context, sid string) (*model.PlayerStats, error) {
+	var stats model.PlayerStats
+	err := r.db.QueryRow(ctx, `
+		SELECT
+			COUNT(*) AS games_played,
+			COUNT(*) FILTER (WHERE winner_sid = $1) AS wins,
+			COUNT(*) FILTER (WHERE winner_sid = '' OR winner_sid IS NULL) AS draws,
+			COUNT(*) FILTER (WHERE (winner_sid != $1 AND winner_sid != '' AND winner_sid IS NOT NULL)) AS losses
+		FROM matches
+		WHERE (player1_sid = $1 OR player2_sid = $1) AND status = 'completed'
+	`, sid, sid, sid, sid).Scan(
+		&stats.GamesPlayed, &stats.Wins, &stats.Draws, &stats.Losses,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &stats, nil
+}

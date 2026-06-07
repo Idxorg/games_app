@@ -197,3 +197,12 @@ func (r *TournamentRepository) GetPlayers(ctx context.Context, tournamentID stri
 	}
 	return players, nil
 }
+
+// CountPlayerTournaments returns the number of tournaments a player has joined.
+func (r *TournamentRepository) CountPlayerTournaments(ctx context.Context, sid string) (int, error) {
+	var count int
+	err := r.db.QueryRow(ctx, `
+		SELECT COUNT(DISTINCT tournament_id) FROM tournament_players WHERE sid = $1
+	`, sid).Scan(&count)
+	return count, err
+}

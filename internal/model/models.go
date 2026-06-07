@@ -79,6 +79,15 @@ type GameInvite struct {
 	ExpiresAt     time.Time `json:"expires_at"`
 }
 
+// PlayerStats represents aggregated player statistics.
+type PlayerStats struct {
+	GamesPlayed      int `json:"games_played"`
+	Wins            int `json:"wins"`
+	Draws           int `json:"draws"`
+	Losses          int `json:"losses"`
+	TournamentsJoined int `json:"tournaments_joined"`
+}
+
 // Match представляет матч
 type Match struct {
     ID            string    `json:"id"`

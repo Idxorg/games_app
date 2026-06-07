@@ -101,13 +101,15 @@ func (h *AuthHandler) VerifyToken(c *gin.Context) {
 
 // UserHandler handler для пользователей
 type UserHandler struct {
-	userRepo   model.UserRepo
-	ratingRepo interface{} // TODO: RatingRepository
+	userRepo       model.UserRepo
+	matchRepo      model.MatchRepo
+	tournamentRepo model.TournamentRepo
+	ratingRepo     interface{} // TODO: RatingRepository
 }
 
 // NewUserHandler создает новый UserHandler
-func NewUserHandler(userRepo model.UserRepo, ratingRepo interface{}) *UserHandler {
-	return &UserHandler{userRepo: userRepo, ratingRepo: ratingRepo}
+func NewUserHandler(userRepo model.UserRepo, ratingRepo interface{}, matchRepo model.MatchRepo, tournamentRepo model.TournamentRepo) *UserHandler {
+	return &UserHandler{userRepo: userRepo, ratingRepo: ratingRepo, matchRepo: matchRepo, tournamentRepo: tournamentRepo}
 }
 
 // GetProfile получает профиль пользователя
@@ -127,10 +129,37 @@ func (h *UserHandler) GetProfile(c *gin.Context) {
 func (h *UserHandler) GetStats(c *gin.Context) {
 	sid := c.Param("sid")
 
-	// TODO: Получить статистику
+	stats := model.PlayerStats{}
+
+	if h.matchRepo != nil {
+		matchStats, err := h.matchRepo.GetPlayerStats(c.Request.Context(), sid)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get match stats"})
+			return
+		}
+		if matchStats != nil {
+			stats.GamesPlayed = matchStats.GamesPlayed
+			stats.Wins = matchStats.Wins
+			stats.Draws = matchStats.Draws
+			stats.Losses = matchStats.Losses
+		}
+	}
+
+	if h.tournamentRepo != nil {
+		tournaments, err := h.tournamentRepo.CountPlayerTournaments(c.Request.Context(), sid)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get tournament count"})
+			return
+		}
+		stats.TournamentsJoined = tournaments
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"sid":               sid,
-		"games_played":      0,
-		"tournaments_joined": 0,
+		"sid":                sid,
+		"games_played":       stats.GamesPlayed,
+		"wins":              stats.Wins,
+		"draws":             stats.Draws,
+		"losses":            stats.Losses,
+		"tournaments_joined": stats.TournamentsJoined,
 	})
 }

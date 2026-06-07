@@ -168,7 +168,7 @@ func TestUserHandler_GetProfile_Found(t *testing.T) {
 	userRepo := mocks.NewMockUserRepo()
 	userRepo.Create(context.Background(), "emp_12345", "test@test.com", "Test User", "male", "IT", "Dev", "")
 
-	h := handler.NewUserHandler(userRepo, nil)
+	h := handler.NewUserHandler(userRepo, nil, nil, nil)
 	router := gin.New()
 	router.GET("/api/v1/users/:sid/profile", h.GetProfile)
 
@@ -195,7 +195,7 @@ func TestUserHandler_GetProfile_NotFound(t *testing.T) {
 
 	userRepo := mocks.NewMockUserRepo()
 
-	h := handler.NewUserHandler(userRepo, nil)
+	h := handler.NewUserHandler(userRepo, nil, nil, nil)
 	router := gin.New()
 	router.GET("/api/v1/users/:sid/profile", h.GetProfile)
 
@@ -212,8 +212,10 @@ func TestUserHandler_GetStats(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	userRepo := mocks.NewMockUserRepo()
+	matchRepo := mocks.NewMockMatchRepo()
+	tournamentRepo := mocks.NewMockTournamentRepo()
 
-	h := handler.NewUserHandler(userRepo, nil)
+	h := handler.NewUserHandler(userRepo, nil, matchRepo, tournamentRepo)
 	router := gin.New()
 	router.GET("/api/v1/users/:sid/stats", h.GetStats)
 
@@ -229,6 +231,91 @@ func TestUserHandler_GetStats(t *testing.T) {
 	json.Unmarshal(w.Body.Bytes(), &stats)
 	if stats["sid"] != "emp_12345" {
 		t.Errorf("Expected sid emp_12345, got %v", stats["sid"])
+	}
+	if int(stats["games_played"].(float64)) != 0 {
+		t.Errorf("Expected 0 games_played, got %v", stats["games_played"])
+	}
+	if int(stats["tournaments_joined"].(float64)) != 0 {
+		t.Errorf("Expected 0 tournaments_joined, got %v", stats["tournaments_joined"])
+	}
+}
+
+func TestUserHandler_GetStats_WithData(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	userRepo := mocks.NewMockUserRepo()
+	matchRepo := mocks.NewMockMatchRepo()
+	tournamentRepo := mocks.NewMockTournamentRepo()
+
+	// Create completed matches: 2 wins, 1 loss, 1 draw
+	matchRepo.Create(context.Background(), &model.Match{
+		ID: "m_w1", GameType: "chess",
+		Player1SID: "emp_12345", Player2SID: "emp_67890",
+		Status: "completed", WinnerSID: "emp_12345",
+	})
+	matchRepo.Create(context.Background(), &model.Match{
+		ID: "m_w2", GameType: "chess",
+		Player1SID: "emp_67890", Player2SID: "emp_12345",
+		Status: "completed", WinnerSID: "emp_12345",
+	})
+	matchRepo.Create(context.Background(), &model.Match{
+		ID: "m_l1", GameType: "chess",
+		Player1SID: "emp_12345", Player2SID: "emp_67890",
+		Status: "completed", WinnerSID: "emp_67890",
+	})
+	matchRepo.Create(context.Background(), &model.Match{
+		ID: "m_d1", GameType: "chess",
+		Player1SID: "emp_12345", Player2SID: "emp_67890",
+		Status: "completed", WinnerSID: "",
+	})
+	// In-progress match should NOT be counted
+	matchRepo.Create(context.Background(), &model.Match{
+		ID: "m_ip1", GameType: "chess",
+		Player1SID: "emp_12345", Player2SID: "emp_67890",
+		Status: "in_progress",
+	})
+
+	// Join 3 tournaments
+	tournamentRepo.AddPlayer(context.Background(), "t_1", "emp_12345")
+	tournamentRepo.AddPlayer(context.Background(), "t_2", "emp_12345")
+	tournamentRepo.AddPlayer(context.Background(), "t_3", "emp_12345")
+
+	h := handler.NewUserHandler(userRepo, nil, matchRepo, tournamentRepo)
+	router := gin.New()
+	router.GET("/api/v1/users/:sid/stats", h.GetStats)
+
+	req, _ := http.NewRequest("GET", "/api/v1/users/emp_12345/stats", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d; body: %s", w.Code, w.Body.String())
+	}
+
+	var stats map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &stats)
+
+	assertInt(t, "games_played", stats, 4)
+	assertInt(t, "wins", stats, 2)
+	assertInt(t, "draws", stats, 1)
+	assertInt(t, "losses", stats, 1)
+	assertInt(t, "tournaments_joined", stats, 3)
+}
+
+func assertInt(t *testing.T, key string, stats map[string]interface{}, want int) {
+	t.Helper()
+	got, ok := stats[key]
+	if !ok {
+		t.Errorf("Missing key %q in response", key)
+		return
+	}
+	val, ok := got.(float64)
+	if !ok {
+		t.Errorf("Key %q is not a number: %T", key, got)
+		return
+	}
+	if int(val) != want {
+		t.Errorf("Expected %s=%d, got %d", key, want, int(val))
 	}
 }
 
