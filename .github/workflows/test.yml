@@ -9,7 +9,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    
+
     services:
       postgres:
         image: postgres:15-alpine
@@ -24,26 +24,31 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-      
+
       redis:
         image: redis:7-alpine
         ports:
           - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     strategy:
       matrix:
-        go: ['1.24', '1.23']
+        go: ['1.24']
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Set up Go
-      uses: actions/setup-go@v4
+      uses: actions/setup-go@v5
       with:
         go-version: ${{ matrix.go }}
 
     - name: Cache Go modules
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: ~/go/pkg/mod
         key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
@@ -53,13 +58,30 @@ jobs:
     - name: Install dependencies
       run: go mod download
 
+    - name: Run golangci-lint
+      uses: golangci/golangci-lint-action@v6
+      with:
+        version: v1.62
+
+    - name: Check formatting
+      run: |
+        files=$(gofmt -l .)
+        if [ -n "$files" ]; then
+          echo "Files not formatted:"
+          echo "$files"
+          exit 1
+        fi
+
+    - name: Vet
+      run: go vet ./...
+
     - name: Run tests with coverage
       run: |
         go test -v -cover -coverprofile=coverage.out ./...
         go tool cover -func=coverage.out
 
     - name: Upload coverage reports
-      uses: codecov/codecov-action@v3
+      uses: codecov/codecov-action@v4
       with:
         files: ./coverage.out
         flags: unittests
@@ -67,23 +89,14 @@ jobs:
 
     - name: Run integration tests
       run: |
-        # Ожидание готовности БД
         until pg_isready -h localhost -p 5432; do
           echo "Waiting for PostgreSQL..."
           sleep 1
         done
-        
-        # Применение миграций
+
         psql -h localhost -U game -d game_platform_test -f migrations/001_init.sql
-        
-        # Запуск интеграционных тестов
+
         go test -v -tags=integration ./tests/integration/...
 
     - name: Build application
       run: go build -v ./cmd/server/
-
-    - name: Check formatting
-      run: gofmt -l . | grep -v vendor
-
-    - name: Vet
-      run: go vet ./...

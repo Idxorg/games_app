@@ -33,13 +33,24 @@ type PortalUserGroups struct {
 	Groups []string `json:"groups"`
 }
 
-// NewPortalAPI создает новый клиент Portal API
-func NewPortalAPI(baseURL, apiKey string) *PortalAPI {
+// NewPortalAPIWithTimeout creates a new Portal API client with configurable timeout.
+func NewPortalAPIWithTimeout(baseURL, apiKey string, timeout time.Duration) *PortalAPI {
 	return &PortalAPI{
-		client:  resty.New().SetBaseURL(baseURL).SetTimeout(10 * time.Second),
+		client:  resty.New().SetBaseURL(baseURL).SetTimeout(timeout),
 		baseURL: baseURL,
 		apiKey:  apiKey,
 	}
+}
+
+// BaseURL returns the configured base URL.
+func (p *PortalAPI) BaseURL() string {
+	return p.baseURL
+}
+
+// NewPortalAPI creates a new Portal API client with default 10s timeout.
+// Kept for backward compatibility with existing tests.
+func NewPortalAPI(baseURL, apiKey string) *PortalAPI {
+	return NewPortalAPIWithTimeout(baseURL, apiKey, 10*time.Second)
 }
 
 // GetUser получает данные пользователя из корп портала

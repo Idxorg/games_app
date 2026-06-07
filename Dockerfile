@@ -1,46 +1,42 @@
 # Build stage
-FROM golang:1.24-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
 
-# Установка зависимостей
+# Install dependencies first (layer cache)
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Копирование кода
-COPY . .
+# Copy source code
+COPY cmd/ ./cmd/
+COPY internal/ ./internal/
+COPY migrations/ ./migrations/
 
-# Сборка приложения
+# Build application
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main ./cmd/server
 
 # Final stage
-FROM alpine:3.19
+FROM alpine:3.20
 
 WORKDIR /app
 
-# Установка ca-certificates для HTTPS
-RUN apk --no-cache add ca-certificates
+# Install ca-certificates for HTTPS and curl for healthcheck
+RUN apk --no-cache add ca-certificates curl
 
-# Копирование бинарника
+# Copy binary and web assets
 COPY --from=builder /app/main .
-COPY --from=builder /app/web ./web
+COPY --from=builder /app/migrations ./migrations/
+COPY web/ ./web/
 
-# Переменные окружения
+# Non-secret defaults only
 ENV PORT=8000
-ENV DATABASE_URL=postgresql://game:***@db:5432/game_platform?sslmode=disable
-ENV REDIS_URL=redis:6379
-ENV S3_ENDPOINT=https://s3.yakbson.digital
-ENV S3_BUCKET=yakbson-games
-ENV S3_ACCESS_KEY=your-access-key
-ENV S3_SECRET_KEY=your-secret-key
-ENV PORTAL_API_URL=https://portal.yakbson.digital/api
-ENV PORTAL_API_KEY=your-api-key
-ENV LIVEKIT_URL=https://livekit.yakbson.digital
-ENV LIVEKIT_API_KEY=your-api-key
-ENV LIVEKIT_API_SECRET=your-api-secret
 
-# Порт
+# Port
 EXPOSE 8000
 
-# Запуск приложения
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:8000/health || exit 1
+
+# Run
 CMD ["./main"]

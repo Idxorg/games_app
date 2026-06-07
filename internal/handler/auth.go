@@ -1,18 +1,22 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
+	"strings"
 
 	"game-platform/internal/repository"
 	"game-platform/internal/service"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 // AuthHandler handler для аутентификации
 type AuthHandler struct {
 	userRepo  *repository.UserRepository
 	portalAPI *service.PortalAPI
+	jwtSecret string
 }
 
 // NewAuthHandler создает новый AuthHandler
@@ -20,10 +24,79 @@ func NewAuthHandler(userRepo *repository.UserRepository, portalAPI *service.Port
 	return &AuthHandler{userRepo: userRepo, portalAPI: portalAPI}
 }
 
+// SetJWTSecret sets the JWT secret used for token validation.
+// Must be called before VerifyToken if authentication is required.
+func (h *AuthHandler) SetJWTSecret(secret string) {
+	h.jwtSecret = secret
+}
+
 // VerifyToken проверяет JWT токен от SSO
 func (h *AuthHandler) VerifyToken(c *gin.Context) {
-	// TODO: Реализовать валидацию JWT
-	c.JSON(http.StatusOK, gin.H{"valid": true, "message": "Token verified"})
+	authHeader := c.GetHeader("Authorization")
+	if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing or invalid authorization header"})
+		return
+	}
+
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+
+	// If no secret configured, accept any token (dev/test mode)
+	if h.jwtSecret == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"valid":   true,
+			"message": "Token accepted (dev mode — no JWT secret configured)",
+		})
+		return
+	}
+
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return []byte(h.jwtSecret), nil
+	})
+
+	if err != nil || !token.Valid {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
+		return
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token claims"})
+		return
+	}
+
+	// Build response with extracted claims
+	result := gin.H{
+		"valid": true,
+	}
+	if sid, ok := claims["sid"].(string); ok {
+		result["sid"] = sid
+	}
+	if email, ok := claims["email"].(string); ok {
+		result["email"] = email
+	}
+	if name, ok := claims["name"].(string); ok {
+		result["name"] = name
+	}
+	if groups, ok := claims["groups"]; ok {
+		result["groups"] = groups
+	}
+
+	// Optionally verify with Portal API if configured
+	if h.portalAPI != nil && h.portalAPI.BaseURL() != "" {
+		if sid, ok := claims["sid"].(string); ok {
+			if _, err := h.portalAPI.GetUser(c.Request.Context(), sid); err != nil {
+				// Portal verification failed — still accept JWT but log warning
+				result["portal_verified"] = false
+			} else {
+				result["portal_verified"] = true
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, result)
 }
 
 // UserHandler handler для пользователей

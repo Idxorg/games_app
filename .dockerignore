@@ -1,0 +1,45 @@
+# Version control
+.git
+.gitignore
+
+# Environment & secrets
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Tests
+tests/
+
+# Documentation
+*.md
+
+# CI/CD
+.github/
+
+# Docker
+Dockerfile
+docker-compose.yml
+docker-compose.override.yml
+
+# Build artifacts
+*.exe
+game-platform
+server
+main
+coverage.out
+coverage.html
+
+# Config (secrets)
+config/config.yaml
+
+# Misc
+.air.toml
+Makefile
+vendor/

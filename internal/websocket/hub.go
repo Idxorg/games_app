@@ -3,6 +3,7 @@ package websocket
 import (
 	"encoding/json"
 	"log"
+	"net/http"
 	"sync"
 	"time"
 
@@ -102,15 +103,22 @@ func (h *Hub) Run() {
 
 // HandleWebSocket обрабатывает WebSocket соединения
 func (h *Hub) HandleWebSocket(c *gin.Context) {
+	// Reject unauthenticated connections — auth middleware must set "sid"
+	sid := c.GetString("sid")
+	if sid == "" {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthenticated: no sid in context"})
+		return
+	}
+
 	_ = c.Param("game_id") // game_id используется для маршрутизации
-	
+
 	conn, err := websocket.Upgrade(c.Writer, c.Request, nil, 4096, 0)
 	if err != nil {
 		log.Printf("WebSocket upgrade error: %v", err)
 		return
 	}
 
-	client := NewClient(h, c.GetString("sid"))
+	client := NewClient(h, sid)
 	client.conn = conn
 
 	client.hub.register <- client

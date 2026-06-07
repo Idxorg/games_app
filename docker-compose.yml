@@ -1,27 +1,16 @@
-version: '3.8'
-
 services:
   game-platform:
     build: .
     container_name: game-platform
     ports:
       - "8000:8000"
-    environment:
-      - DATABASE_URL=postgresql://game:***@db:5432/game_platform?sslmode=disable
-      - REDIS_URL=redis:6379
-      - S3_ENDPOINT=https://s3.yakbson.digital
-      - S3_BUCKET=yakbson-games
-      - S3_ACCESS_KEY=${S3_ACCESS_KEY}
-      - S3_SECRET_KEY=${S3_SECRET_KEY}
-      - PORTAL_API_URL=https://portal.yakbson.digital/api
-      - PORTAL_API_KEY=${PORTAL_API_KEY}
-      - LIVEKIT_URL=https://livekit.yakbson.digital
-      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
-      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
-      - JWT_SECRET=${JWT_SECRET}
+    env_file:
+      - .env
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - game-network
     restart: unless-stopped
@@ -33,12 +22,17 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./migrations/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql
     environment:
-      - POSTGRES_USER=game
-      - POSTGRES_PASSWORD=***
-      - POSTGRES_DB=game_platform
+      POSTGRES_USER: game
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      POSTGRES_DB: game_platform
     networks:
       - game-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U game -d game_platform"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine
@@ -46,6 +40,11 @@ services:
     networks:
       - game-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 networks:
   game-network:
