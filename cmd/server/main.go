@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -11,6 +11,7 @@ import (
 
 	"game-platform/internal/config"
 	"game-platform/internal/handler"
+	"game-platform/internal/logger"
 	"game-platform/internal/middleware"
 	"game-platform/internal/repository"
 	"game-platform/internal/service"
@@ -25,8 +26,12 @@ func main() {
 	// Load configuration (reads config file + env var overrides)
 	cfg, err := config.Load("config/config.yaml")
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		slog.Error("failed to load config", "error", err)
+		os.Exit(1)
 	}
+
+	// Initialise structured logger
+	logger.Init(cfg.Server.Mode)
 
 	// Create a cancellable context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
@@ -38,7 +43,8 @@ func main() {
 	// Initialize database
 	dbPool, err := pgxpool.New(ctx, cfg.Database.URL)
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		slog.Error("failed to connect to database", "error", err)
+		os.Exit(1)
 	}
 	defer dbPool.Close()
 
@@ -158,9 +164,10 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("Server starting on %s", cfg.Addr())
+		slog.Info("server starting", "addr", cfg.Addr())
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Server failed: %v", err)
+			slog.Error("server failed", "error", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -168,15 +175,16 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	log.Println("Shutting down server...")
+	slog.Info("shutting down server")
 
 	// Give outstanding requests 5 seconds to complete
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Fatalf("Server forced to shutdown: %v", err)
+		slog.Error("server forced shutdown", "error", err)
+		os.Exit(1)
 	}
 
-	log.Println("Server exited gracefully")
+	slog.Info("server exited gracefully")
 }

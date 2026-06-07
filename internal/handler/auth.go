@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"game-platform/internal/repository"
+	"game-platform/internal/model"
 	"game-platform/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -14,13 +14,13 @@ import (
 
 // AuthHandler handler для аутентификации
 type AuthHandler struct {
-	userRepo  *repository.UserRepository
+	userRepo  model.UserRepo
 	portalAPI *service.PortalAPI
 	jwtSecret string
 }
 
 // NewAuthHandler создает новый AuthHandler
-func NewAuthHandler(userRepo *repository.UserRepository, portalAPI *service.PortalAPI) *AuthHandler {
+func NewAuthHandler(userRepo model.UserRepo, portalAPI *service.PortalAPI) *AuthHandler {
 	return &AuthHandler{userRepo: userRepo, portalAPI: portalAPI}
 }
 
@@ -101,12 +101,12 @@ func (h *AuthHandler) VerifyToken(c *gin.Context) {
 
 // UserHandler handler для пользователей
 type UserHandler struct {
-	userRepo   *repository.UserRepository
+	userRepo   model.UserRepo
 	ratingRepo interface{} // TODO: RatingRepository
 }
 
 // NewUserHandler создает новый UserHandler
-func NewUserHandler(userRepo *repository.UserRepository, ratingRepo interface{}) *UserHandler {
+func NewUserHandler(userRepo model.UserRepo, ratingRepo interface{}) *UserHandler {
 	return &UserHandler{userRepo: userRepo, ratingRepo: ratingRepo}
 }
 
@@ -115,7 +115,7 @@ func (h *UserHandler) GetProfile(c *gin.Context) {
 	sid := c.Param("sid")
 
 	user, err := h.userRepo.GetBySID(c.Request.Context(), sid)
-	if err != nil {
+	if err != nil || user == nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 		return
 	}
@@ -129,8 +129,8 @@ func (h *UserHandler) GetStats(c *gin.Context) {
 
 	// TODO: Получить статистику
 	c.JSON(http.StatusOK, gin.H{
-		"sid": sid,
-		"games_played": 0,
+		"sid":               sid,
+		"games_played":      0,
 		"tournaments_joined": 0,
 	})
 }

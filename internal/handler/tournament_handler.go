@@ -1,12 +1,12 @@
 package handler
 
 import (
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
 
 	"game-platform/internal/model"
-	"game-platform/internal/repository"
 	"game-platform/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -14,14 +14,14 @@ import (
 
 // TournamentHandler handles tournament CRUD and player management endpoints.
 type TournamentHandler struct {
-	tournamentRepo *repository.TournamentRepository
-	userRepo      *repository.UserRepository
+	tournamentRepo model.TournamentRepo
+	userRepo      model.UserRepo
 }
 
 // NewTournamentHandler creates a new TournamentHandler.
 func NewTournamentHandler(
-	tournamentRepo *repository.TournamentRepository,
-	userRepo *repository.UserRepository,
+	tournamentRepo model.TournamentRepo,
+	userRepo model.UserRepo,
 ) *TournamentHandler {
 	return &TournamentHandler{
 		tournamentRepo: tournamentRepo,
@@ -155,10 +155,12 @@ func (h *TournamentHandler) CreateTournament(c *gin.Context) {
 
 	created, err := h.tournamentRepo.Create(c.Request.Context(), tournament)
 	if err != nil {
+		slog.Error("failed to create tournament", "error", err, "name", req.Name, "creator", creatorSID)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create tournament"})
 		return
 	}
 
+	slog.Info("tournament created", "tournament_id", created.ID, "name", created.Name, "creator", creatorSID, "game_type", created.GameType)
 	c.JSON(http.StatusCreated, created)
 }
 
@@ -167,7 +169,7 @@ func (h *TournamentHandler) GetTournament(c *gin.Context) {
 	id := c.Param("id")
 
 	tournament, err := h.tournamentRepo.GetByID(c.Request.Context(), id)
-	if err != nil {
+	if err != nil || tournament == nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "tournament not found"})
 		return
 	}
@@ -178,10 +180,9 @@ func (h *TournamentHandler) GetTournament(c *gin.Context) {
 // UpdateTournament handles PUT /api/v1/tournaments/:id.
 func (h *TournamentHandler) UpdateTournament(c *gin.Context) {
 	id := c.Param("id")
-
 	// Check tournament exists
 	existing, err := h.tournamentRepo.GetByID(c.Request.Context(), id)
-	if err != nil {
+	if err != nil || existing == nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "tournament not found"})
 		return
 	}
@@ -255,8 +256,8 @@ func (h *TournamentHandler) DeleteTournament(c *gin.Context) {
 	id := c.Param("id")
 
 	// Verify existence first
-	_, err := h.tournamentRepo.GetByID(c.Request.Context(), id)
-	if err != nil {
+	t, err := h.tournamentRepo.GetByID(c.Request.Context(), id)
+	if err != nil || t == nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "tournament not found"})
 		return
 	}
@@ -287,7 +288,7 @@ func (h *TournamentHandler) JoinTournament(c *gin.Context) {
 
 	// Check tournament exists and is joinable
 	tournament, err := h.tournamentRepo.GetByID(c.Request.Context(), id)
-	if err != nil {
+	if err != nil || tournament == nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "tournament not found"})
 		return
 	}
@@ -310,10 +311,12 @@ func (h *TournamentHandler) JoinTournament(c *gin.Context) {
 	}
 
 	if err := h.tournamentRepo.AddPlayer(c.Request.Context(), id, playerSID); err != nil {
+		slog.Error("failed to join tournament", "error", err, "tournament_id", id, "sid", playerSID)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to join tournament"})
 		return
 	}
 
+	slog.Info("player joined tournament", "tournament_id", id, "sid", playerSID)
 	c.JSON(http.StatusOK, gin.H{"message": "joined tournament"})
 }
 
@@ -334,7 +337,7 @@ func (h *TournamentHandler) LeaveTournament(c *gin.Context) {
 
 	// Verify tournament exists and is still joinable
 	tournament, err := h.tournamentRepo.GetByID(c.Request.Context(), id)
-	if err != nil {
+	if err != nil || tournament == nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "tournament not found"})
 		return
 	}
@@ -344,10 +347,12 @@ func (h *TournamentHandler) LeaveTournament(c *gin.Context) {
 	}
 
 	if err := h.tournamentRepo.RemovePlayer(c.Request.Context(), id, playerSID); err != nil {
+		slog.Error("failed to leave tournament", "error", err, "tournament_id", id, "sid", playerSID)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to leave tournament"})
 		return
 	}
 
+	slog.Info("player left tournament", "tournament_id", id, "sid", playerSID)
 	c.JSON(http.StatusOK, gin.H{"message": "left tournament"})
 }
 
@@ -356,7 +361,8 @@ func (h *TournamentHandler) GetTournamentPlayers(c *gin.Context) {
 	id := c.Param("id")
 
 	// Verify tournament exists
-	if _, err := h.tournamentRepo.GetByID(c.Request.Context(), id); err != nil {
+	t, err := h.tournamentRepo.GetByID(c.Request.Context(), id)
+	if err != nil || t == nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "tournament not found"})
 		return
 	}

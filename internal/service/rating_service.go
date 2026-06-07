@@ -7,21 +7,20 @@ import (
 	"log"
 
 	"game-platform/internal/model"
-	"game-platform/internal/repository"
 )
 
 // RatingService handles Elo rating calculations and leaderboard queries.
 type RatingService struct {
-	ratingRepo *repository.RatingRepository
-	matchRepo  *repository.MatchRepository
-	userRepo   *repository.UserRepository
+	ratingRepo model.RatingRepo
+	matchRepo  model.MatchRepo
+	userRepo   model.UserRepo
 }
 
 // NewRatingService creates a new RatingService.
 func NewRatingService(
-	ratingRepo *repository.RatingRepository,
-	matchRepo *repository.MatchRepository,
-	userRepo *repository.UserRepository,
+	ratingRepo model.RatingRepo,
+	matchRepo model.MatchRepo,
+	userRepo model.UserRepo,
 ) *RatingService {
 	return &RatingService{
 		ratingRepo: ratingRepo,
@@ -150,7 +149,7 @@ func (s *RatingService) UpdateMatchRatings(ctx context.Context, match *model.Mat
 
 	// Fetch or initialise ratings for both players.
 	rating1, err := s.ratingRepo.Get(ctx, p1Sid, match.GameType)
-	if err != nil {
+	if err != nil || rating1 == nil {
 		// No rating yet — create fresh entry.
 		rating1 = &model.PlayerRating{
 			SID:      p1Sid,
@@ -159,7 +158,7 @@ func (s *RatingService) UpdateMatchRatings(ctx context.Context, match *model.Mat
 		}
 	}
 	rating2, err := s.ratingRepo.Get(ctx, p2Sid, match.GameType)
-	if err != nil {
+	if err != nil || rating2 == nil {
 		rating2 = &model.PlayerRating{
 			SID:      p2Sid,
 			GameType: match.GameType,

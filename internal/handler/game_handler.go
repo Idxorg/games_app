@@ -2,13 +2,12 @@ package handler
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
 
 	"game-platform/internal/model"
-	"game-platform/internal/repository"
 	"game-platform/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -16,13 +15,13 @@ import (
 
 // GameHandler handles game-related endpoints (available games, match management).
 type GameHandler struct {
-	matchRepo *repository.MatchRepository
+	matchRepo model.MatchRepo
 	ratingSvc *service.RatingService
 }
 
 // NewGameHandler creates a new GameHandler.
 func NewGameHandler(
-	matchRepo *repository.MatchRepository,
+	matchRepo model.MatchRepo,
 	ratingSvc *service.RatingService,
 ) *GameHandler {
 	return &GameHandler{
@@ -116,7 +115,7 @@ func (h *GameHandler) StartMatch(c *gin.Context) {
 
 	created, err := h.matchRepo.Create(c.Request.Context(), match)
 	if err != nil {
-		log.Printf("Failed to create match: %v", err)
+		slog.Error("failed to create match", "error", err, "game_type", req.GameType, "player1", player1SID, "player2", req.Player2SID)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to start match"})
 		return
 	}
@@ -143,7 +142,7 @@ func (h *GameHandler) CompleteMatch(c *gin.Context) {
 
 	// Fetch the match
 	match, err := h.matchRepo.GetByID(c.Request.Context(), req.MatchID)
-	if err != nil {
+	if err != nil || match == nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "match not found"})
 		return
 	}
@@ -169,7 +168,7 @@ func (h *GameHandler) CompleteMatch(c *gin.Context) {
 
 	// Complete the match in the repository
 	if err := h.matchRepo.Complete(c.Request.Context(), req.MatchID, req.WinnerSID, req.Score, req.Moves); err != nil {
-		log.Printf("Failed to complete match: %v", err)
+		slog.Error("failed to complete match", "error", err, "match_id", req.MatchID)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to complete match"})
 		return
 	}
@@ -182,13 +181,13 @@ func (h *GameHandler) CompleteMatch(c *gin.Context) {
 	// Update Elo ratings
 	if h.ratingSvc != nil {
 		if err := h.ratingSvc.UpdateMatchRatings(c.Request.Context(), match); err != nil {
-			log.Printf("Warning: failed to update ratings for match %s: %v", req.MatchID, err)
+			slog.Warn("failed to update ratings for match", "match_id", req.MatchID, "error", err)
 			// Don't fail the request — match is already completed in DB
 		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "match completed",
+		"message":  "match completed",
 		"match_id": req.MatchID,
 	})
 }
@@ -261,9 +260,9 @@ func (h *GameHandler) GetLeaderboard(c *gin.Context) {
 		leaderboard = []model.PlayerRating{}
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"game_type":  gameType,
+		"game_type":   gameType,
 		"leaderboard": leaderboard,
-		"count":      len(leaderboard),
+		"count":       len(leaderboard),
 	})
 }
 

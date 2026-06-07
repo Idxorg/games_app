@@ -2,7 +2,7 @@ package websocket
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -114,12 +114,14 @@ func (h *Hub) HandleWebSocket(c *gin.Context) {
 
 	conn, err := websocket.Upgrade(c.Writer, c.Request, nil, 4096, 0)
 	if err != nil {
-		log.Printf("WebSocket upgrade error: %v", err)
+		slog.Error("websocket upgrade error", "sid", sid, "error", err)
 		return
 	}
 
 	client := NewClient(h, sid)
 	client.conn = conn
+
+	slog.Info("websocket connected", "sid", sid)
 
 	client.hub.register <- client
 
@@ -145,8 +147,9 @@ func (c *Client) readPump() {
 		_, message, err := c.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("WebSocket error: %v", err)
+				slog.Error("websocket read error", "sid", c.sid, "error", err)
 			}
+			slog.Info("websocket disconnected", "sid", c.sid)
 			break
 		}
 
@@ -175,19 +178,19 @@ func (c *Client) HandleMessage(message []byte) {
 // handleJoin обрабатывает присоединение к игре
 func (c *Client) handleJoin(msg map[string]interface{}) {
 	// TODO: Добавить игрока в комнату игры
-	log.Printf("Player %s joined game", c.sid)
+	slog.Info("player joined game", "sid", c.sid, "event", "join", "message", msg)
 }
 
 // handleMove обрабатывает ход в игре
 func (c *Client) handleMove(msg map[string]interface{}) {
 	// TODO: Обработать ход
-	log.Printf("Player %s made move: %v", c.sid, msg)
+	slog.Info("player made move", "sid", c.sid, "event", "move", "message", msg)
 }
 
 // handleGameOver обрабатывает завершение игры
 func (c *Client) handleGameOver(msg map[string]interface{}) {
 	// TODO: Завершить игру
-	log.Printf("Game over: %v", msg)
+	slog.Info("game over", "sid", c.sid, "event", "game_over", "message", msg)
 }
 
 // writePump отправляет сообщения клиенту

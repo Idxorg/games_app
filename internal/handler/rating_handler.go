@@ -5,7 +5,6 @@ import (
 	"strconv"
 
 	"game-platform/internal/model"
-	"game-platform/internal/repository"
 	"game-platform/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -13,16 +12,16 @@ import (
 
 // RatingHandler handles paginated rating and department leaderboard endpoints.
 type RatingHandler struct {
-	ratingRepo *repository.RatingRepository
+	ratingRepo model.RatingRepo
 	ratingSvc  *service.RatingService
-	userRepo   *repository.UserRepository
+	userRepo   model.UserRepo
 }
 
 // NewRatingHandler creates a new RatingHandler.
 func NewRatingHandler(
-	ratingRepo *repository.RatingRepository,
+	ratingRepo model.RatingRepo,
 	ratingSvc *service.RatingService,
-	userRepo *repository.UserRepository,
+	userRepo model.UserRepo,
 ) *RatingHandler {
 	return &RatingHandler{
 		ratingRepo: ratingRepo,
@@ -35,7 +34,6 @@ func NewRatingHandler(
 // Returns a paginated list of player ratings for the given game type.
 func (h *RatingHandler) GetRatings(c *gin.Context) {
 	gameType := c.Param("game_type")
-
 	if !service.ValidGameType(gameType) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "invalid game_type",
