@@ -1,5 +1,6 @@
+import { useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, RefreshCw, Trophy } from 'lucide-react'
 import { LeaderboardRow } from '../components/ui/LeaderboardRow'
 import { useLeaderboardStore } from '../stores/leaderboardStore'
 
@@ -37,8 +38,13 @@ function LeaderboardSkeleton() {
 
 export function Leaderboard() {
   const store = useLeaderboardStore()
+  const { loading, error, fetchLeaderboard, gameFilter } = store
   const paged = store.getPaged()
   const totalPages = store.getTotalPages()
+
+  useEffect(() => {
+    fetchLeaderboard()
+  }, [fetchLeaderboard])
 
   return (
     <div className="py-8">
@@ -77,54 +83,80 @@ export function Leaderboard() {
           </div>
         </div>
 
-        {/* Table Header */}
-        <div className="hidden md:flex items-center gap-4 px-4 py-2 mb-2 text-xs font-semibold text-muted">
-          <div className="w-10">Место</div>
-          <div className="w-10" />
-          <div className="flex-grow">Игрок</div>
-          {store.gameFilter !== 'all' && <div className="w-32">Рейтинг</div>}
-          {store.gameFilter !== 'all' && <div className="w-16 text-right">ELO</div>}
-          <div className="w-8" />
-          <div className="flex gap-3">В / П / Н</div>
-        </div>
+        {/* Loading */}
+        {loading && <LeaderboardSkeleton />}
 
-        {/* Rows */}
-        {paged.map((player, i) => (
-          <motion.div
-            key={player.sid}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: (i % store.perPage) * 0.05 }}
-          >
-            <LeaderboardRow
-              player={player}
-              rank={(store.page - 1) * store.perPage + i + 1}
-              gameFilter={store.gameFilter}
-            />
-          </motion.div>
-        ))}
-
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-center gap-3 mt-6">
-            <button
-              onClick={() => store.setPage(Math.max(1, store.page - 1))}
-              disabled={store.page === 1}
-              className={`btn btn-secondary ${store.page === 1 ? 'opacity-40' : ''}`}
-            >
-              <ChevronLeft size={16} />
-            </button>
-            <span className="text-sm text-muted">
-              {store.page} из {totalPages}
-            </span>
-            <button
-              onClick={() => store.setPage(Math.min(totalPages, store.page + 1))}
-              disabled={store.page === totalPages}
-              className={`btn btn-secondary ${store.page === totalPages ? 'opacity-40' : ''}`}
-            >
-              <ChevronRight size={16} />
+        {/* Error */}
+        {!loading && error && (
+          <div className="glass-card p-12 text-center">
+            <Trophy size={48} color="var(--text-muted)" className="mx-auto mb-4" />
+            <p className="text-muted mb-4">{error}</p>
+            <button className="btn btn-secondary" onClick={() => fetchLeaderboard(gameFilter === 'all' ? undefined : gameFilter)}>
+              <RefreshCw size={14} /> Повторить
             </button>
           </div>
+        )}
+
+        {/* Empty */}
+        {!loading && !error && paged.length === 0 && (
+          <div className="glass-card p-12 text-center">
+            <Trophy size={48} color="var(--text-muted)" className="mx-auto mb-4" />
+            <p className="text-muted">Рейтинг пока пуст</p>
+          </div>
+        )}
+
+        {/* Rows */}
+        {!loading && !error && paged.length > 0 && (
+          <>
+            {/* Table Header */}
+            <div className="hidden md:flex items-center gap-4 px-4 py-2 mb-2 text-xs font-semibold text-muted">
+              <div className="w-10">Место</div>
+              <div className="w-10" />
+              <div className="flex-grow">Игрок</div>
+              {gameFilter !== 'all' && <div className="w-32">Рейтинг</div>}
+              {gameFilter !== 'all' && <div className="w-16 text-right">ELO</div>}
+              <div className="w-8" />
+              <div className="flex gap-3">В / П / Н</div>
+            </div>
+
+            {paged.map((player, i) => (
+              <motion.div
+                key={player.sid}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: (i % store.perPage) * 0.05 }}
+              >
+                <LeaderboardRow
+                  player={player}
+                  rank={(store.page - 1) * store.perPage + i + 1}
+                  gameFilter={store.gameFilter}
+                />
+              </motion.div>
+            ))}
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-3 mt-6">
+                <button
+                  onClick={() => store.setPage(Math.max(1, store.page - 1))}
+                  disabled={store.page === 1}
+                  className={`btn btn-secondary ${store.page === 1 ? 'opacity-40' : ''}`}
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <span className="text-sm text-muted">
+                  {store.page} из {totalPages}
+                </span>
+                <button
+                  onClick={() => store.setPage(Math.min(totalPages, store.page + 1))}
+                  disabled={store.page === totalPages}
+                  className={`btn btn-secondary ${store.page === totalPages ? 'opacity-40' : ''}`}
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

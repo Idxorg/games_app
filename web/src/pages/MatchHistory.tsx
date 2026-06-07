@@ -1,14 +1,8 @@
+import { useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Clock, TrendingUp, TrendingDown, Minus, Trophy } from 'lucide-react'
-import { players } from '../data/players'
-import { matches, Match } from '../data/matches'
+import { Clock, TrendingUp, TrendingDown, Minus, Trophy, RefreshCw } from 'lucide-react'
 import { useUserStore } from '../stores/userStore'
-
-const resultConfig = {
-  win: { label: 'Победа', badgeClass: 'result-badge-win', icon: TrendingUp, colorClass: 'text-success' },
-  loss: { label: 'Поражение', badgeClass: 'result-badge-loss', icon: TrendingDown, colorClass: 'text-danger' },
-  draw: { label: 'Ничья', badgeClass: 'result-badge-draw', icon: Minus, colorClass: 'text-muted' },
-}
+import { useMatchStore } from '../stores/matchStore'
 
 const gameNames: Record<string, string> = {
   chess: 'Шахматы',
@@ -17,10 +11,25 @@ const gameNames: Record<string, string> = {
   trivia: 'Викторины',
 }
 
-function MatchEntry({ match, index, currentUserId }: { match: Match; index: number; currentUserId: string }) {
-  const opponent = match.player1Id === currentUserId ? match.player2Id : match.player1Id
-  const opponentPlayer = players.find((p) => p.sid === opponent)
-  const config = resultConfig[match.result]
+function MatchEntry({
+  match,
+  index,
+  currentUserId,
+}: {
+  match: ReturnType<typeof useMatchStore.getState>['matches'][number]
+  index: number
+  currentUserId: string
+}) {
+  const opponent = match.player1Sid === currentUserId ? match.player2Sid : match.player1Sid
+  const isWin = match.winnerSid === currentUserId
+  const isDraw = !match.winnerSid || match.winnerSid === '' || match.status === 'draw'
+  const isLoss = !isWin && !isDraw
+
+  const config = isDraw
+    ? { label: 'Ничья', badgeClass: 'result-badge-draw', icon: Minus, colorClass: 'text-muted' }
+    : isWin
+      ? { label: 'Победа', badgeClass: 'result-badge-win', icon: TrendingUp, colorClass: 'text-success' }
+      : { label: 'Поражение', badgeClass: 'result-badge-loss', icon: TrendingDown, colorClass: 'text-danger' }
 
   return (
     <motion.div
@@ -37,54 +46,93 @@ function MatchEntry({ match, index, currentUserId }: { match: Match; index: numb
 
       {/* Game */}
       <div className="game-badge">
-        {gameNames[match.game] || match.game}
+        {gameNames[match.gameType] || match.gameType}
       </div>
 
       {/* Opponent */}
       <div className="flex items-center gap-2 flex-grow min-w-0">
         <div className="profile-avatar-sm">
-          {opponentPlayer?.initials || '?'}
+          {opponent ? opponent.slice(0, 2).toUpperCase() : '?'}
         </div>
         <div className="min-w-0">
-          <div className="text-sm font-semibold truncate">{opponentPlayer?.name || opponent}</div>
-          <div className="text-xs text-muted">{opponentPlayer?.department}</div>
+          <div className="text-sm font-semibold truncate">{opponent || '—'}</div>
+          <div className="text-xs text-muted">&nbsp;</div>
         </div>
       </div>
 
-      {/* ELO Change */}
-      <motion.div
-        initial={{ scale: 0 }}
-        animate={{ scale: 1 }}
-        transition={{ type: 'spring', delay: index * 0.05 + 0.3 }}
-        className={`flex-shrink-0 font-mono font-bold text-sm ${config.colorClass}`}
-      >
-        {match.eloChange > 0 ? '+' : ''}{match.eloChange}
-      </motion.div>
-
       {/* Duration */}
-      <div className="hidden sm:flex items-center gap-1 text-xs flex-shrink-0 text-muted">
-        <Clock size={12} />
-        {match.duration}
-      </div>
+      {match.date && (
+        <div className="hidden sm:flex items-center gap-1 text-xs flex-shrink-0 text-muted">
+          <Clock size={12} />
+          {new Date(match.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
+        </div>
+      )}
     </motion.div>
   )
 }
 
+function MatchSkeleton() {
+  return (
+    <div className="flex flex-col gap-2">
+      {[1, 2, 3, 4].map((i) => (
+        <div key={i} className="glass-card p-4 flex items-center gap-4">
+          <div className="skeleton" style={{ width: 80, height: 28, borderRadius: 'var(--radius-sm)' }} />
+          <div className="skeleton" style={{ width: 60, height: 24, borderRadius: 'var(--radius-sm)' }} />
+          <div className="flex items-center gap-2 flex-grow">
+            <div className="skeleton skeleton-circle" style={{ width: 32, height: 32 }} />
+            <div className="skeleton skeleton-text" style={{ width: '40%' }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function MatchHistory() {
-  const currentUserId = useUserStore((s) => s.currentUserId)
+  const currentUserId = useUserStore((s) => s.sid)
+  const isAuthenticated = useUserStore((s) => s.isAuthenticated)
+  const isEmbed = useUserStore((s) => s.isEmbed)
+  const { matches, loading, error, fetchMatches } = useMatchStore()
 
-  // Group matches by date
-  const grouped = matches.reduce<Record<string, Match[]>>((acc, match) => {
-    if (!acc[match.date]) acc[match.date] = []
-    acc[match.date].push(match)
-    return acc
-  }, {})
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchMatches()
+    }
+  }, [isAuthenticated, fetchMatches])
 
-  const sortedDates = Object.keys(grouped).sort((a, b) => b.localeCompare(a))
+  if (isEmbed && !isAuthenticated) {
+    return (
+      <div className="py-8">
+        <div className="container text-center">
+          <p className="text-muted">Для доступа войдите через портал</p>
+        </div>
+      </div>
+    )
+  }
 
-  const winsCount = matches.filter((m) => m.result === 'win').length
-  const lossesCount = matches.filter((m) => m.result === 'loss').length
-  const drawsCount = matches.filter((m) => m.result === 'draw').length
+  if (!isAuthenticated) {
+    return (
+      <div className="py-8">
+        <div className="container">
+          <h1 className="text-3xl font-bold mb-2">История матчей</h1>
+          <p className="mb-6 text-secondary">
+            Хронология всех ваших партий с изменением рейтинга
+          </p>
+          <div className="glass-card p-12 text-center">
+            <Trophy size={48} color="var(--text-muted)" className="mx-auto mb-4" />
+            <p className="text-muted">Войдите, чтобы увидеть историю матчей</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Calculate summary
+  const winsCount = matches.filter((m) => m.winnerSid === currentUserId).length
+  const lossesCount = matches.filter(
+    (m) => m.winnerSid && m.winnerSid !== currentUserId && m.status !== 'draw',
+  ).length
+  const drawsCount = matches.filter((m) => !m.winnerSid || m.status === 'draw').length
 
   return (
     <div className="py-8">
@@ -125,21 +173,39 @@ export function MatchHistory() {
           </motion.div>
         </div>
 
-        {/* Timeline */}
-        {sortedDates.map((date) => (
-          <div key={date} className="mb-8">
-            <div className="flex items-center gap-3 mb-3">
-              <Trophy size={16} color="var(--gold)" />
-              <h2 className="text-sm font-semibold text-secondary">
-                {new Date(date).toLocaleDateString('ru-RU', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-              </h2>
-              <div className="flex-grow h-px" style={{ background: 'var(--bg-glass-border)' }} />
-            </div>
-            {grouped[date].map((match, i) => (
-              <MatchEntry key={match.id} match={match} index={i} currentUserId={currentUserId} />
-            ))}
+        {/* Loading */}
+        {loading && <MatchSkeleton />}
+
+        {/* Error */}
+        {!loading && error && (
+          <div className="glass-card p-12 text-center">
+            <Trophy size={48} color="var(--text-muted)" className="mx-auto mb-4" />
+            <p className="text-muted mb-4">{error}</p>
+            <button className="btn btn-secondary" onClick={() => fetchMatches()}>
+              <RefreshCw size={14} /> Повторить
+            </button>
           </div>
-        ))}
+        )}
+
+        {/* Empty */}
+        {!loading && !error && matches.length === 0 && (
+          <div className="glass-card p-12 text-center">
+            <Trophy size={48} color="var(--text-muted)" className="mx-auto mb-4" />
+            <p className="text-muted">Нет активных матчей</p>
+          </div>
+        )}
+
+        {/* Match List */}
+        {!loading && !error && matches.length > 0 && (
+          matches.map((match, i) => (
+            <MatchEntry
+              key={match.id}
+              match={match}
+              index={i}
+              currentUserId={currentUserId}
+            />
+          ))
+        )}
       </div>
     </div>
   )

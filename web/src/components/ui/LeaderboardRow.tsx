@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion'
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import { EloBar } from './EloBar'
-import type { Player } from '../../data/players'
+import type { Player } from '../../stores/leaderboardStore'
 
 interface LeaderboardRowProps {
   player: Player

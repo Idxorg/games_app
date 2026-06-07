@@ -1,16 +1,25 @@
 import { create } from 'zustand'
-import { players as staticPlayers, type Player } from '../data/players'
 import { getLeaderboard } from '../api/ratings'
 import { type PlayerRating } from '../api/client'
 
+export interface Player {
+  sid: string
+  name: string
+  department: string
+  initials: string
+  elo: Record<string, number>
+  wins: number
+  losses: number
+  draws: number
+  trend: 'up' | 'down' | 'same'
+}
+
 function mapRatingToPlayer(r: PlayerRating): Player {
-  // We may not have the full player info from the API, so build a minimal one
-  const staticMatch = staticPlayers.find((p) => p.sid === r.sid)
   return {
     sid: r.sid,
-    name: staticMatch?.name ?? r.sid,
-    department: staticMatch?.department ?? '',
-    initials: staticMatch?.initials ?? r.sid.slice(0, 2).toUpperCase(),
+    name: r.sid,
+    department: '',
+    initials: r.sid.slice(0, 2).toUpperCase(),
     elo: { [r.game_type]: r.elo },
     wins: r.wins,
     losses: r.losses,
@@ -22,6 +31,8 @@ function mapRatingToPlayer(r: PlayerRating): Player {
 type GameFilter = 'all' | 'chess' | 'checkers' | 'backgammon' | 'trivia'
 type PeriodFilter = 'all' | 'week' | 'month' | 'year'
 
+const GAME_TYPES: GameFilter[] = ['chess', 'checkers', 'backgammon', 'trivia']
+
 interface LeaderboardStore {
   players: Player[]
   gameFilter: GameFilter
@@ -29,6 +40,7 @@ interface LeaderboardStore {
   page: number
   perPage: number
   loading: boolean
+  error: string | null
   fetchLeaderboard: (gameType?: string) => Promise<void>
   setGameFilter: (f: GameFilter) => void
   setPeriodFilter: (f: PeriodFilter) => void
@@ -39,38 +51,53 @@ interface LeaderboardStore {
 }
 
 export const useLeaderboardStore = create<LeaderboardStore>((set, get) => ({
-  players: staticPlayers,
+  players: [],
   gameFilter: 'all',
   periodFilter: 'all',
   page: 1,
   perPage: 10,
   loading: false,
+  error: null,
   fetchLeaderboard: async (gameType?: string) => {
-    set({ loading: true })
+    set({ loading: true, error: null })
     try {
-      // If a specific game type is selected, fetch its leaderboard
       const type = gameType || get().gameFilter
       if (type !== 'all') {
         const ratings = await getLeaderboard(type)
         const mapped = ratings.map(mapRatingToPlayer)
-        // Merge with static data to preserve names/departments we already know
         set({ players: mapped })
+      } else {
+        // Fetch all game types and merge by sid
+        const results = await Promise.allSettled(
+          GAME_TYPES.map((gt) => getLeaderboard(gt)),
+        )
+        const merged = new Map<string, Player>()
+        for (const result of results) {
+          if (result.status === 'fulfilled') {
+            for (const r of result.value) {
+              const existing = merged.get(r.sid)
+              if (existing) {
+                existing.elo[r.game_type] = r.elo
+                existing.wins += r.wins
+                existing.losses += r.losses
+                existing.draws += r.draws
+              } else {
+                merged.set(r.sid, mapRatingToPlayer(r))
+              }
+            }
+          }
+        }
+        set({ players: Array.from(merged.values()) })
       }
-      // For 'all', keep the static fallback (no combined endpoint exists)
     } catch {
-      // Keep static fallback data
+      set({ error: 'Не удалось загрузить рейтинг' })
     } finally {
       set({ loading: false })
     }
   },
   setGameFilter: (gameFilter) => {
     set({ gameFilter, page: 1 })
-    // Auto-fetch when changing game filter
-    if (gameFilter !== 'all') {
-      get().fetchLeaderboard(gameFilter)
-    } else {
-      set({ players: staticPlayers })
-    }
+    get().fetchLeaderboard(gameFilter)
   },
   setPeriodFilter: (periodFilter) => set({ periodFilter, page: 1 }),
   setPage: (page) => set({ page }),

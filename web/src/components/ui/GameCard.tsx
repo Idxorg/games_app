@@ -5,7 +5,7 @@ import { ChessPiece } from './ChessPiece'
 import { CheckersPiece } from './CheckersPiece'
 import { BackgammonPiece } from './BackgammonPiece'
 import { Brain, Grid3X3, Puzzle, Gamepad2, Dice5, Swords } from 'lucide-react'
-import type { Game } from '../../data/games'
+import type { Game } from '../../stores/gameStore'
 import { LiveIndicator } from './LiveIndicator'
 
 interface GameCardProps {

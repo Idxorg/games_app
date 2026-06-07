@@ -1,7 +1,27 @@
 import { create } from 'zustand'
-import { tournaments as staticTournaments, type Tournament } from '../data/tournaments'
 import { listTournaments } from '../api/tournaments'
 import { type Tournament as ApiTournament } from '../api/client'
+
+export interface Tournament {
+  id: string
+  name: string
+  game: string
+  status: 'active' | 'upcoming' | 'completed'
+  startDate: string
+  endDate: string
+  participants: string[]
+  rounds: {
+    round: string
+    matches: {
+      player1: string
+      score1: number
+      player2: string
+      score2: number
+      winner?: string
+    }[]
+  }[]
+  prize: string
+}
 
 function mapApiTournament(t: ApiTournament): Tournament {
   return {
@@ -23,22 +43,24 @@ interface TournamentStore {
   tournaments: Tournament[]
   activeTab: TournamentTab
   loading: boolean
+  error: string | null
   fetchTournaments: () => Promise<void>
   setActiveTab: (tab: TournamentTab) => void
 }
 
 export const useTournamentStore = create<TournamentStore>((set) => ({
-  tournaments: staticTournaments,
+  tournaments: [],
   activeTab: 'active',
   loading: false,
+  error: null,
   fetchTournaments: async () => {
-    set({ loading: true })
+    set({ loading: true, error: null })
     try {
       const apiTournaments = await listTournaments()
       const mapped = apiTournaments.map(mapApiTournament)
-      set({ tournaments: mapped })
+      set({ tournaments: mapped, error: null })
     } catch {
-      // Keep static fallback data
+      set({ error: 'Не удалось загрузить турниры' })
     } finally {
       set({ loading: false })
     }

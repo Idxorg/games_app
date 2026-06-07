@@ -1,5 +1,4 @@
 import React from 'react'
-import { players } from '../../data/players'
 
 interface TournamentBracketProps {
   rounds: {
@@ -9,9 +8,7 @@ interface TournamentBracketProps {
 }
 
 function getPlayerName(sid: string): string {
-  if (sid === 'TBD') return 'TBD'
-  const p = players.find((pl) => pl.sid === sid)
-  return p ? p.name : sid
+  return sid === 'TBD' ? 'TBD' : sid
 }
 
 export function TournamentBracket({ rounds }: TournamentBracketProps) {

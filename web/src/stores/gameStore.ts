@@ -1,7 +1,17 @@
 import { create } from 'zustand'
-import { games, type Game } from '../data/games'
 import { availableGames } from '../api/games'
 import { type ApiGame } from '../api/client'
+
+export interface Game {
+  id: string
+  name: string
+  description: string
+  iconType: string
+  playerCount: string
+  category: string
+  isLive: boolean
+  route: string
+}
 
 function mapApiGameToGame(g: ApiGame): Game {
   return {
@@ -24,24 +34,26 @@ interface GameStore {
   selectedGame: Game | null
   searchQuery: string
   loading: boolean
+  error: string | null
   fetchGames: () => Promise<void>
   setSearchQuery: (q: string) => void
   selectGame: (game: Game) => void
 }
 
 export const useGameStore = create<GameStore>((set) => ({
-  games,
+  games: [],
   selectedGame: null,
   searchQuery: '',
   loading: false,
+  error: null,
   fetchGames: async () => {
-    set({ loading: true })
+    set({ loading: true, error: null })
     try {
       const apiGames = await availableGames()
       const mapped = apiGames.map(mapApiGameToGame)
       set({ games: mapped })
     } catch {
-      // Keep static fallback data
+      set({ error: 'Не удалось загрузить список игр' })
     } finally {
       set({ loading: false })
     }

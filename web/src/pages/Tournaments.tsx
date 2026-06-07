@@ -1,12 +1,12 @@
+import { useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Trophy, Users, Calendar, Gift, ChevronDown, ChevronUp } from 'lucide-react'
+import { Trophy, Users, Calendar, Gift, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { TournamentBracket } from '../components/ui/TournamentBracket'
 import { Countdown } from '../components/ui/Countdown'
 import { LiveIndicator } from '../components/ui/LiveIndicator'
 import { useTournamentStore } from '../stores/tournamentStore'
-import { players } from '../data/players'
 
 const statusLabels = {
   active: { text: 'Активный', badgeClass: 'badge-success', icon: LiveIndicator },
@@ -14,13 +14,9 @@ const statusLabels = {
   completed: { text: 'Завершён', badgeClass: 'badge-neutral', icon: Trophy },
 }
 
-function TournamentCard({ tournamentId, index }: { tournamentId: string; index: number }) {
-  const { tournaments } = useTournamentStore()
-  const tournament = tournaments.find((t) => t.id === tournamentId)
+function TournamentCard({ tournament, index }: { tournament: ReturnType<typeof useTournamentStore.getState>['tournaments'][number]; index: number }) {
   const [expanded, setExpanded] = useState(false)
   const navigate = useNavigate()
-
-  if (!tournament) return null
 
   const status = statusLabels[tournament.status]
 
@@ -40,7 +36,7 @@ function TournamentCard({ tournamentId, index }: { tournamentId: string; index: 
             <div>
               <h3 className="text-lg font-bold">{tournament.name}</h3>
               <p className="text-sm text-muted">
-                Шахматы — {tournament.startDate} — {tournament.endDate}
+                {tournament.game === 'chess' ? 'Шахматы' : tournament.game === 'checkers' ? 'Шашки' : tournament.game === 'backgammon' ? 'Нарды' : tournament.game === 'trivia' ? 'Викторины' : tournament.game} — {tournament.startDate} — {tournament.endDate}
               </p>
             </div>
           </div>
@@ -51,42 +47,13 @@ function TournamentCard({ tournamentId, index }: { tournamentId: string; index: 
 
         <div className="flex flex-wrap items-center gap-6 mb-4">
           <div className="flex items-center gap-2 text-sm text-secondary">
-            <Users size={16} />
-            <span>{tournament.participants.length} участников</span>
-          </div>
-          <div className="flex items-center gap-2 text-sm text-secondary">
             <Gift size={16} />
-            <span>{tournament.prize}</span>
+            <span>{tournament.prize || 'Нет приза'}</span>
           </div>
         </div>
 
-        {/* Participants */}
-        {tournament.participants.length > 0 && (
-          <div className="flex items-center gap-2 mb-4">
-            <div className="avatar-stack">
-              {tournament.participants.slice(0, 6).map((pid) => {
-                const p = players.find((pl) => pl.sid === pid)
-                return (
-                  <div
-                    key={pid}
-                    className="avatar-sm"
-                    title={p?.name}
-                  >
-                    {p?.initials}
-                  </div>
-                )
-              })}
-              {tournament.participants.length > 6 && (
-                <div className="avatar-sm avatar-sm-neutral">
-                  +{tournament.participants.length - 6}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
         {/* Countdown for upcoming */}
-        {tournament.status === 'upcoming' && (
+        {tournament.status === 'upcoming' && tournament.startDate && (
           <div className="mb-4">
             <Countdown targetDate={tournament.startDate} label="До начала турнира:" />
           </div>
@@ -147,7 +114,12 @@ function TournamentSkeleton() {
 }
 
 export function Tournaments() {
-  const { activeTab, setActiveTab, tournaments } = useTournamentStore()
+  const { activeTab, setActiveTab, tournaments, loading, error, fetchTournaments } = useTournamentStore()
+
+  useEffect(() => {
+    fetchTournaments()
+  }, [fetchTournaments])
+
   const filtered = tournaments.filter((t) => t.status === activeTab)
 
   return (
@@ -171,19 +143,42 @@ export function Tournaments() {
           ))}
         </div>
 
+        {/* Loading */}
+        {loading && (
+          <div className="flex flex-col gap-4">
+            {[1, 2, 3].map((i) => (
+              <TournamentSkeleton key={i} />
+            ))}
+          </div>
+        )}
+
+        {/* Error */}
+        {!loading && error && (
+          <div className="glass-card p-12 text-center">
+            <Trophy size={48} color="var(--text-muted)" className="mx-auto mb-4" />
+            <p className="text-muted mb-4">{error}</p>
+            <button className="btn btn-secondary" onClick={fetchTournaments}>
+              <RefreshCw size={14} /> Повторить
+            </button>
+          </div>
+        )}
+
+        {/* Empty */}
+        {!loading && !error && filtered.length === 0 && (
+          <div className="glass-card p-12 text-center">
+            <Trophy size={48} color="var(--text-muted)" className="mx-auto mb-4" />
+            <p className="text-muted">Нет турниров в этой категории</p>
+          </div>
+        )}
+
         {/* Tournament List */}
-        <div className="flex flex-col gap-4">
-          {filtered.length > 0 ? (
-            filtered.map((tournament, i) => (
-              <TournamentCard key={tournament.id} tournamentId={tournament.id} index={i} />
-            ))
-          ) : (
-            <div className="glass-card p-12 text-center">
-              <Trophy size={48} color="var(--text-muted)" className="mx-auto mb-4" />
-              <p className="text-muted">Нет турниров в этой категории</p>
-            </div>
-          )}
-        </div>
+        {!loading && !error && filtered.length > 0 && (
+          <div className="flex flex-col gap-4">
+            {filtered.map((tournament, i) => (
+              <TournamentCard key={tournament.id} tournament={tournament} index={i} />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
