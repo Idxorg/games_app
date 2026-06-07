@@ -56,6 +56,9 @@ func main() {
 
 	// Initialize repositories
 	userRepo := repository.NewUserRepository(dbPool)
+	tournamentRepo := repository.NewTournamentRepository(dbPool)
+	matchRepo := repository.NewMatchRepository(dbPool)
+	ratingRepo := repository.NewRatingRepository(dbPool)
 
 	// Initialize services with config-driven values
 	portalAPI := service.NewPortalAPIWithTimeout(
@@ -63,11 +66,15 @@ func main() {
 		cfg.PortalAPI.APIKey,
 		cfg.PortalAPITimeout(),
 	)
+	ratingService := service.NewRatingService(ratingRepo, matchRepo, userRepo)
 
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(userRepo, portalAPI)
 	authHandler.SetJWTSecret(cfg.JWT.Secret)
 	userHandler := handler.NewUserHandler(userRepo, nil)
+	tournamentHandler := handler.NewTournamentHandler(tournamentRepo, userRepo)
+	gameHandler := handler.NewGameHandler(matchRepo, ratingService)
+	ratingHandler := handler.NewRatingHandler(ratingRepo, ratingService, userRepo)
 
 	// Setup Gin
 	r := gin.Default()
@@ -96,6 +103,40 @@ func main() {
 		users.Use(middleware.Authenticate(cfg.JWT.Secret))
 		{
 			users.GET("/:sid/profile", userHandler.GetProfile)
+		}
+
+		// Tournaments — protected by JWT
+		tournaments := api.Group("/tournaments")
+		tournaments.Use(middleware.Authenticate(cfg.JWT.Secret))
+		{
+			tournaments.GET("", tournamentHandler.ListTournaments)
+			tournaments.POST("", tournamentHandler.CreateTournament)
+			tournaments.GET("/:id", tournamentHandler.GetTournament)
+			tournaments.PUT("/:id", tournamentHandler.UpdateTournament)
+			tournaments.DELETE("/:id", tournamentHandler.DeleteTournament)
+			tournaments.POST("/:id/join", tournamentHandler.JoinTournament)
+			tournaments.POST("/:id/leave", tournamentHandler.LeaveTournament)
+			tournaments.GET("/:id/players", tournamentHandler.GetTournamentPlayers)
+		}
+
+		// Games & Matches — protected by JWT
+		games := api.Group("/games")
+		games.Use(middleware.Authenticate(cfg.JWT.Secret))
+		{
+			games.GET("/available", gameHandler.AvailableGames)
+			games.POST("/match/start", gameHandler.StartMatch)
+			games.POST("/match/complete", gameHandler.CompleteMatch)
+			games.GET("/match/history", gameHandler.GetMatchHistory)
+		}
+
+		// Ratings — protected by JWT
+		ratings := api.Group("/ratings")
+		ratings.Use(middleware.Authenticate(cfg.JWT.Secret))
+		{
+			ratings.GET("/:game_type", ratingHandler.GetRatings)
+			ratings.GET("/:game_type/me", gameHandler.GetUserRating)
+			ratings.GET("/:game_type/leaderboard", gameHandler.GetLeaderboard)
+			ratings.GET("/:game_type/leaderboard/department", ratingHandler.GetLeaderboardByDepartment)
 		}
 	}
 
