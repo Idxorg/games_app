@@ -75,47 +75,70 @@
 ### WebSocket
 - `WS /ws/game/:game_id` - Подключение к игре
 
-## Установка и запуск
+## Quick Start (Docker)
 
-### Локальная разработка
-
-1. **Установить зависимости:**
-```bash
-go mod tidy
-```
-
-2. **Настроить окружение:**
+1. **Create environment file:**
 ```bash
 cp .env.example .env
-# Отредактировать .env с вашими данными
+# Edit .env — at minimum set DATABASE_URL, POSTGRES_PASSWORD, JWT_SECRET
 ```
 
-3. **Запустить PostgreSQL и Redis:**
+2. **Start everything:**
 ```bash
-docker-compose up -d db redis
+make dev          # builds and starts all services (Ctrl+C to stop)
+# or detached:
+make dev-detach   # runs in background
 ```
 
-4. **Выполнить миграции:**
-```bash
-psql -h localhost -U game -d game_platform -f migrations/001_init.sql
-```
-
-5. **Запустить сервер:**
-```bash
-go run cmd/server/main.go
-```
-
-### Docker
-
-1. **Собрать и запустить:**
-```bash
-docker-compose up --build
-```
-
-2. **Проверить работу:**
+3. **Verify:**
 ```bash
 curl http://localhost:8000/health
 ```
+
+The app is now running at **http://localhost:8000**. The Go server serves the React SPA from `web/dist/` with full client-side routing support.
+
+### Useful commands
+
+```bash
+make dev          # Build and run full stack
+make build        # Rebuild Docker images
+make down         # Stop containers (keep data)
+make clean        # Stop containers and remove volumes
+make test         # Run Go tests
+make migrate      # Run migrations against running DB
+make frontend     # Start Vite dev server (frontend only)
+make logs         # Tail application logs
+make help         # Show all available targets
+```
+
+## Local Development (without Docker)
+
+1. **Install dependencies:**
+```bash
+go mod tidy
+cd web && npm install && cd ..
+```
+
+2. **Start PostgreSQL and Redis:**
+```bash
+docker compose up -d db redis
+```
+
+3. **Run migrations:**
+```bash
+make migrate
+```
+
+4. **Start backend + frontend dev servers:**
+```bash
+# Terminal 1 — Go backend:
+go run cmd/server/main.go
+
+# Terminal 2 — Vite dev server (with hot reload):
+make frontend
+```
+
+The Vite dev server proxies `/api` requests to `localhost:8000`.
 
 ## Конфигурация
 

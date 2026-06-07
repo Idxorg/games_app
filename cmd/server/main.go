@@ -153,9 +153,20 @@ func main() {
 		wsHub.HandleWebSocket(c)
 	})
 
-	// Static files (frontend)
-	r.Static("/static", "./web")
-	r.StaticFile("/", "./web/index.html")
+	// Static files (frontend) — serve from web/dist/ (Vite build output)
+	r.Static("/assets", "./web/dist/assets")
+
+	// SPA fallback: serve index.html for all non-API routes
+	// This is required for React Router client-side routing
+	indexHTML, err := os.ReadFile("./web/dist/index.html")
+	if err != nil {
+		slog.Warn("index.html not found in web/dist/, skipping SPA fallback", "error", err)
+	} else {
+		slog.Info("SPA fallback enabled, serving index.html for non-API routes")
+		r.NoRoute(func(c *gin.Context) {
+			c.Data(http.StatusOK, "text/html; charset=utf-8", indexHTML)
+		})
+	}
 
 	// Start server with graceful shutdown
 	srv := &http.Server{

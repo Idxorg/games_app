@@ -1,6 +1,8 @@
 services:
   game-platform:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: game-platform
     ports:
       - "8000:8000"
@@ -20,10 +22,9 @@ services:
     container_name: game-platform-db
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./migrations/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql
     environment:
       POSTGRES_USER: game
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gamepass}
       POSTGRES_DB: game_platform
     networks:
       - game-network

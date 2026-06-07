@@ -1,5 +1,20 @@
-# Build stage
-FROM golang:1.25-alpine AS builder
+# =============================================================================
+# Stage 1: Build Frontend (React + Vite)
+# =============================================================================
+FROM node:22-alpine AS build-frontend
+
+WORKDIR /app/web
+
+COPY web/package.json web/package-lock.json* ./
+RUN npm ci
+
+COPY web/ ./
+RUN npm run build
+
+# =============================================================================
+# Stage 2: Build Backend (Go)
+# =============================================================================
+FROM golang:1.24-alpine AS build-backend
 
 WORKDIR /app
 
@@ -10,33 +25,41 @@ RUN go mod download
 # Copy source code
 COPY cmd/ ./cmd/
 COPY internal/ ./internal/
-COPY migrations/ ./migrations/
+COPY pkg/ ./pkg/
 
-# Build application
+# Build static binary
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main ./cmd/server
 
-# Final stage
+# =============================================================================
+# Stage 3: Runtime
+# =============================================================================
 FROM alpine:3.20
+
+RUN apk --no-cache add ca-certificates curl
 
 WORKDIR /app
 
-# Install ca-certificates for HTTPS and curl for healthcheck
-RUN apk --no-cache add ca-certificates curl
+# Copy binary from backend build
+COPY --from=build-backend /app/main .
 
-# Copy binary and web assets
-COPY --from=builder /app/main .
-COPY --from=builder /app/migrations ./migrations/
-COPY web/ ./web/
+# Copy frontend build output
+COPY --from=build-frontend /app/web/dist ./web/dist
+
+# Copy migrations for runtime execution
+COPY migrations/ ./migrations/
+
+# Copy migration runner
+COPY migrations/run.sh ./migrations/run.sh
 
 # Non-secret defaults only
 ENV PORT=8000
+ENV SERVER_MODE=release
 
-# Port
 EXPOSE 8000
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:8000/health || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD curl -f http://localhost:${PORT}/health || exit 1
 
-# Run
-CMD ["./main"]
+# Run migrations then start the server
+CMD ["sh", "-c", "./migrations/run.sh && ./main"]
