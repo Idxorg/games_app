@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, useLocation, Link } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Home, ArrowLeft } from 'lucide-react'
@@ -9,6 +10,8 @@ import { MatchHistory } from './pages/MatchHistory'
 import { Profile } from './pages/Profile'
 import { Game } from './pages/Game'
 import { ToastContainer } from './components/ui/Toast'
+import { useUserStore } from './stores/userStore'
+import { isEmbedMode } from './embedHandoff'
 
 function NotFound() {
   return (
@@ -55,8 +58,36 @@ function AnimatedRoutes() {
 }
 
 export default function App() {
+  const initialize = useUserStore((s) => s.initialize)
+  const loading = useUserStore((s) => s.loading)
+  const theme = useUserStore((s) => s.theme)
+
+  useEffect(() => {
+    initialize()
+  }, [initialize])
+
+  // Apply theme class to document
+  useEffect(() => {
+    if (theme === 'light') {
+      document.documentElement.classList.add('theme-light')
+      document.documentElement.classList.remove('theme-dark')
+    } else if (theme === 'dark') {
+      document.documentElement.classList.add('theme-dark')
+      document.documentElement.classList.remove('theme-light')
+    }
+  }, [theme])
+
+  if (loading) {
+    return (
+      <div className="loading-screen">
+        <div className="skeleton w-48 h-8 mb-4" />
+        <div className="skeleton w-64 h-6" />
+      </div>
+    )
+  }
+
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={isEmbedMode() ? '/games' : undefined}>
       <AnimatedRoutes />
       <ToastContainer />
     </BrowserRouter>

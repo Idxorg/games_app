@@ -1,9 +1,10 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Search, Bell, ChevronDown, Menu, X, Gamepad2, Home, Trophy, BarChart3, Clock, User } from 'lucide-react'
+import { Search, ChevronDown, Menu, X, Gamepad2, Home, Trophy, BarChart3, Clock, User } from 'lucide-react'
 import { useUserStore } from '../../stores/userStore'
 import { useToastStore } from '../ui/Toast'
+import { isEmbedMode } from '../../embedHandoff'
 
 const navItems = [
   { path: '/', label: 'Главная', icon: Home },
@@ -14,15 +15,21 @@ const navItems = [
 ]
 
 export function Header() {
+  // Hide entire Header in embed mode
+  if (isEmbedMode()) return null
+
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchValue, setSearchValue] = useState('')
   const [menuOpen, setMenuOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const [notifications] = useState(3)
   const location = useLocation()
   const dropdownRef = useRef<HTMLDivElement>(null)
   const addToast = useToastStore((s) => s.addToast)
   const logout = useUserStore((s) => s.logout)
+  const getInitials = useUserStore((s) => s.getInitials)
+  const currentUser = useUserStore((s) => s.getCurrentUser())
+
+  const initials = currentUser ? getInitials() : '?'
 
   const handleSearch = useCallback((value: string) => {
     setSearchValue(value)
@@ -45,10 +52,6 @@ export function Header() {
   useEffect(() => {
     setMobileMenuOpen(false)
   }, [location.pathname])
-
-  const handleNotificationClick = useCallback(() => {
-    addToast('Скоро: уведомления будут доступны', 'info')
-  }, [addToast])
 
   const handleLogout = useCallback(() => {
     setMenuOpen(false)
@@ -115,20 +118,6 @@ export function Header() {
             <Search size={18} />
           </button>
 
-          {/* Notifications */}
-          <button
-            className="btn-icon relative"
-            onClick={handleNotificationClick}
-            aria-label="Уведомления"
-          >
-            <Bell size={18} />
-            {notifications > 0 && (
-              <span className="notification-badge">
-                {notifications}
-              </span>
-            )}
-          </button>
-
           {/* User Dropdown */}
           <div className="relative hidden md:block" ref={dropdownRef}>
             <button
@@ -139,7 +128,7 @@ export function Header() {
               aria-expanded={menuOpen}
             >
               <div className="profile-avatar-sm">
-                АП
+                {initials}
               </div>
               <ChevronDown size={14} color="var(--text-muted)" />
             </button>

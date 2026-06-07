@@ -18,6 +18,7 @@ type Config struct {
 	S3        S3Config        `yaml:"s3"`
 	PortalAPI PortalAPIConfig `yaml:"portal_api"`
 	JWT       JWTConfig       `yaml:"jwt"`
+	Embed     EmbedConfig     `yaml:"embed"`
 	LiveKit   LiveKitConfig   `yaml:"livekit"`
 	CORS      CORSConfig      `yaml:"cors"`
 	RateLimit RateLimitConfig `yaml:"rate_limit"`
@@ -60,9 +61,15 @@ type PortalAPIConfig struct {
 }
 
 type JWTConfig struct {
-	Secret  string `yaml:"secret"`
-	JWKSURL string `yaml:"jwks_url"`
-	Issuer  string `yaml:"issuer"`
+	Secret       string `yaml:"secret"`
+	JWKSURL      string `yaml:"jwks_url"`
+	Issuer       string `yaml:"issuer"`
+	ExpiryHours  int    `yaml:"expiry_hours"`
+}
+
+// EmbedConfig holds portal embed-specific configuration.
+type EmbedConfig struct {
+	HandoffSecret string `yaml:"handoff_secret"`
 }
 
 type LiveKitConfig struct {
@@ -101,6 +108,7 @@ func Load(path string) (*Config, error) {
 	cfg.S3.Region = "us-east-1"
 	cfg.RateLimit.MaxRequests = 100
 	cfg.RateLimit.WindowSeconds = 60
+	cfg.JWT.ExpiryHours = 24
 
 	// Load from file if it exists
 	if path != "" {
@@ -135,6 +143,8 @@ func Load(path string) (*Config, error) {
 	overrideString("JWT_SECRET", func(v string) { cfg.JWT.Secret = v })
 	overrideString("JWT_JWKS_URL", func(v string) { cfg.JWT.JWKSURL = v })
 	overrideString("JWT_ISSUER", func(v string) { cfg.JWT.Issuer = v })
+	overrideString("JWT_EXPIRY_HOURS", func(v string) { cfg.JWT.ExpiryHours = mustInt(v) })
+	overrideString("GAMES_EMBED_HANDOFF_SECRET", func(v string) { cfg.Embed.HandoffSecret = v })
 	overrideString("LIVEKIT_HOST", func(v string) { cfg.LiveKit.Host = v })
 	overrideString("LIVEKIT_API_KEY", func(v string) { cfg.LiveKit.APIKey = v })
 	overrideString("LIVEKIT_API_SECRET", func(v string) { cfg.LiveKit.APISecret = v })

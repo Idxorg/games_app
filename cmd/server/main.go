@@ -1,201 +1,71 @@
 package main
 
 import (
-	"context"
-	"log/slog"
-	"net/http"
+	"flag"
+	"log"
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"game-platform/internal/config"
 	"game-platform/internal/handler"
-	"game-platform/internal/logger"
 	"game-platform/internal/middleware"
-	"game-platform/internal/repository"
-	"game-platform/internal/service"
 	"game-platform/internal/websocket"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/redis/go-redis/v9"
 )
 
 func main() {
-	// Load configuration (reads config file + env var overrides)
-	cfg, err := config.Load("config/config.yaml")
+	configPath := flag.String("config", "", "path to YAML config file")
+	flag.Parse()
+
+	cfg, err := config.Load(*configPath)
 	if err != nil {
-		slog.Error("failed to load config", "error", err)
-		os.Exit(1)
+		log.Fatalf("Failed to load config: %v", err)
 	}
-
-	// Initialise structured logger
-	logger.Init(cfg.Server.Mode)
-
-	// Create a cancellable context for graceful shutdown
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	// Set Gin mode
 	gin.SetMode(cfg.Server.Mode)
 
-	// Initialize database
-	dbPool, err := pgxpool.New(ctx, cfg.Database.URL)
-	if err != nil {
-		slog.Error("failed to connect to database", "error", err)
-		os.Exit(1)
-	}
-	defer dbPool.Close()
-
-	// Initialize Redis
-	rdb := redis.NewClient(&redis.Options{
-		Addr:     cfg.Redis.URL,
-		Password: cfg.Redis.Password,
-		DB:       cfg.Redis.DB,
-	})
-	defer rdb.Close()
-
-	// Initialize WebSocket hub
-	wsHub := websocket.NewHub()
-	go wsHub.Run()
-
-	// Initialize repositories
-	userRepo := repository.NewUserRepository(dbPool)
-	tournamentRepo := repository.NewTournamentRepository(dbPool)
-	matchRepo := repository.NewMatchRepository(dbPool)
-	ratingRepo := repository.NewRatingRepository(dbPool)
-
-	// Initialize services with config-driven values
-	portalAPI := service.NewPortalAPIWithTimeout(
-		cfg.PortalAPI.URL,
-		cfg.PortalAPI.APIKey,
-		cfg.PortalAPITimeout(),
-	)
-	ratingService := service.NewRatingService(ratingRepo, matchRepo, userRepo)
-
-	// Initialize handlers
-	authHandler := handler.NewAuthHandler(userRepo, portalAPI)
-	authHandler.SetJWTSecret(cfg.JWT.Secret)
-	userHandler := handler.NewUserHandler(userRepo, nil)
-	tournamentHandler := handler.NewTournamentHandler(tournamentRepo, userRepo)
-	gameHandler := handler.NewGameHandler(matchRepo, ratingService)
-	ratingHandler := handler.NewRatingHandler(ratingRepo, ratingService, userRepo)
-
-	// Setup Gin
-	r := gin.Default()
-
-	// Middleware
+	r := gin.New()
+	r.Use(gin.Recovery())
 	r.Use(middleware.CORS())
-	r.Use(middleware.RateLimitWithRedis(rdb, cfg.RateLimit.MaxRequests, time.Duration(cfg.RateLimit.WindowSeconds)*time.Second))
 
-	// Health check with timestamp
+	// --- Auth routes (no JWT required) ---
+	authHandler := handler.NewAuthHandler(nil, nil)
+	authHandler.SetJWTSecret(cfg.JWT.Secret)
+
+	// Embed auth: uses X-Erlink-Embed-Secret header, NOT JWT
+	embedHandler := handler.NewEmbedHandler(
+		cfg.Embed.HandoffSecret,
+		cfg.JWT.Secret,
+		cfg.JWT.ExpiryHours,
+	)
+	r.POST("/api/v1/auth/embed", embedHandler.EmbedAuth)
+
+	// Verify token: requires JWT Bearer token
+	r.POST("/api/v1/auth/verify", authHandler.VerifyToken)
+
+	// Health endpoint (public, no JWT required)
 	r.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
+		c.JSON(200, gin.H{
 			"status": "ok",
-			"time":   time.Now().UTC(),
+			"time":   time.Now().Format(time.RFC3339),
 		})
 	})
 
-	// API v1
-	api := r.Group("/api/v1")
-	{
-		// Auth
-		auth := api.Group("/auth")
-		auth.POST("/verify", authHandler.VerifyToken)
+	// --- Protected routes (JWT required) ---
+	protected := r.Group("/api/v1")
+	protected.Use(middleware.Authenticate(cfg.JWT.Secret))
 
-		// Users — protected by JWT authentication
-		users := api.Group("/users")
-		users.Use(middleware.Authenticate(cfg.JWT.Secret))
-		{
-			users.GET("/:sid/profile", userHandler.GetProfile)
-		}
+	// --- WebSocket game rooms ---
+	roomManager := websocket.NewRoomManager()
+	protected.GET("/ws/game/:match_id", roomManager.HandleWebSocket)
 
-		// Tournaments — protected by JWT
-		tournaments := api.Group("/tournaments")
-		tournaments.Use(middleware.Authenticate(cfg.JWT.Secret))
-		{
-			tournaments.GET("", tournamentHandler.ListTournaments)
-			tournaments.POST("", tournamentHandler.CreateTournament)
-			tournaments.GET("/:id", tournamentHandler.GetTournament)
-			tournaments.PUT("/:id", tournamentHandler.UpdateTournament)
-			tournaments.DELETE("/:id", tournamentHandler.DeleteTournament)
-			tournaments.POST("/:id/join", tournamentHandler.JoinTournament)
-			tournaments.POST("/:id/leave", tournamentHandler.LeaveTournament)
-			tournaments.GET("/:id/players", tournamentHandler.GetTournamentPlayers)
-		}
+	_ = os.Stdout // avoid unused import issues if needed later
 
-		// Games & Matches — protected by JWT
-		games := api.Group("/games")
-		games.Use(middleware.Authenticate(cfg.JWT.Secret))
-		{
-			games.GET("/available", gameHandler.AvailableGames)
-			games.POST("/match/start", gameHandler.StartMatch)
-			games.POST("/match/complete", gameHandler.CompleteMatch)
-			games.GET("/match/history", gameHandler.GetMatchHistory)
-		}
-
-		// Ratings — protected by JWT
-		ratings := api.Group("/ratings")
-		ratings.Use(middleware.Authenticate(cfg.JWT.Secret))
-		{
-			ratings.GET("/:game_type", ratingHandler.GetRatings)
-			ratings.GET("/:game_type/me", gameHandler.GetUserRating)
-			ratings.GET("/:game_type/leaderboard", gameHandler.GetLeaderboard)
-			ratings.GET("/:game_type/leaderboard/department", ratingHandler.GetLeaderboardByDepartment)
-		}
+	addr := cfg.Addr()
+	log.Printf("Starting server on %s", addr)
+	if err := r.Run(addr); err != nil {
+		log.Fatalf("Server failed: %v", err)
 	}
-
-	// WebSocket endpoint — protected by JWT authentication
-	ws := r.Group("/ws")
-	ws.Use(middleware.Authenticate(cfg.JWT.Secret))
-	ws.GET("/game/:game_id", func(c *gin.Context) {
-		wsHub.HandleWebSocket(c)
-	})
-
-	// Static files (frontend) — serve from web/dist/ (Vite build output)
-	r.Static("/assets", "./web/dist/assets")
-
-	// SPA fallback: serve index.html for all non-API routes
-	// This is required for React Router client-side routing
-	indexHTML, err := os.ReadFile("./web/dist/index.html")
-	if err != nil {
-		slog.Warn("index.html not found in web/dist/, skipping SPA fallback", "error", err)
-	} else {
-		slog.Info("SPA fallback enabled, serving index.html for non-API routes")
-		r.NoRoute(func(c *gin.Context) {
-			c.Data(http.StatusOK, "text/html; charset=utf-8", indexHTML)
-		})
-	}
-
-	// Start server with graceful shutdown
-	srv := &http.Server{
-		Addr:    cfg.Addr(),
-		Handler: r,
-	}
-
-	go func() {
-		slog.Info("server starting", "addr", cfg.Addr())
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("server failed", "error", err)
-			os.Exit(1)
-		}
-	}()
-
-	// Wait for interrupt signal for graceful shutdown
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-	slog.Info("shutting down server")
-
-	// Give outstanding requests 5 seconds to complete
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer shutdownCancel()
-
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		slog.Error("server forced shutdown", "error", err)
-		os.Exit(1)
-	}
-
-	slog.Info("server exited gracefully")
 }

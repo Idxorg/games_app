@@ -189,3 +189,53 @@ func Authenticate(secret interface{}) gin.HandlerFunc {
 		c.Next()
 	}
 }
+
+// RequireEntitlement checks that the authenticated user has the required
+// group (e.g. "app_games") in their JWT claims.
+// If embedHandoffSecret is empty, all authenticated users are allowed (dev mode).
+// This middleware should be placed after the Authenticate middleware.
+func RequireEntitlement(embedHandoffSecret string, requiredGroup string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Dev mode: if no embed secret configured, allow all
+		if embedHandoffSecret == "" {
+			c.Next()
+			return
+		}
+
+		// Check groups from JWT claims (set by Authenticate middleware)
+		groupsVal, exists := c.Get("groups")
+		if !exists {
+			c.JSON(http.StatusForbidden, gin.H{"error": "no groups found in token"})
+			c.Abort()
+			return
+		}
+
+		// groups may be []interface{} from JSON deserialization
+		groups, ok := groupsVal.([]interface{})
+		if !ok {
+			// If groups is not a slice, try string type (single group)
+			if gs, ok := groupsVal.(string); ok {
+				if gs == requiredGroup {
+					c.Next()
+					return
+				}
+				c.JSON(http.StatusForbidden, gin.H{"error": "insufficient entitlement"})
+				c.Abort()
+				return
+			}
+			c.JSON(http.StatusForbidden, gin.H{"error": "invalid groups format in token"})
+			c.Abort()
+			return
+		}
+
+		for _, g := range groups {
+			if gs, ok := g.(string); ok && gs == requiredGroup {
+				c.Next()
+				return
+			}
+		}
+
+		c.JSON(http.StatusForbidden, gin.H{"error": "insufficient entitlement"})
+		c.Abort()
+	}
+}

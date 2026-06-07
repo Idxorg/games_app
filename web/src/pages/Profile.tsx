@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { Building, Trophy, Target, Flame, Star, Settings } from 'lucide-react'
 import { useUserStore } from '../stores/userStore'
@@ -43,6 +44,15 @@ function ProfileSkeleton() {
 
 export function Profile() {
   const user = useUserStore((s) => s.getCurrentUser())
+  const getInitials = useUserStore((s) => s.getInitials)
+
+  // Stats fetched from API (stub: local state with defaults)
+  const [stats] = useState(() => ({
+    wins: 0,
+    losses: 0,
+    draws: 0,
+  }))
+  const [eloMap] = useState<Record<string, number>>(() => ({}))
 
   if (!user) {
     return (
@@ -54,6 +64,9 @@ export function Profile() {
     )
   }
 
+  const totalGames = stats.wins + stats.losses + stats.draws
+  const winRate = totalGames > 0 ? Math.round((stats.wins / totalGames) * 100) : 0
+
   return (
     <div className="py-8">
       <div className="container">
@@ -62,7 +75,7 @@ export function Profile() {
           <div className="lg:col-span-1">
             <div className="glass-card p-6 text-center mb-4">
               <div className="profile-avatar">
-                {user.initials}
+                {getInitials()}
               </div>
               <h2 className="text-xl font-bold mb-1">{user.name}</h2>
               <div className="flex items-center gap-2 justify-center text-sm mb-4 text-muted">
@@ -77,24 +90,24 @@ export function Profile() {
               <div className="flex flex-col gap-4">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted">Всего партий</span>
-                  <span className="font-bold">{user.wins + user.losses + user.draws}</span>
+                  <span className="font-bold">{totalGames}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-success">Побед</span>
-                  <span className="font-bold text-success">{user.wins}</span>
+                  <span className="font-bold text-success">{stats.wins}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-danger">Поражений</span>
-                  <span className="font-bold text-danger">{user.losses}</span>
+                  <span className="font-bold text-danger">{stats.losses}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted">Ничьих</span>
-                  <span className="font-bold">{user.draws}</span>
+                  <span className="font-bold">{stats.draws}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted">Винрейт</span>
                   <span className="font-bold text-accent">
-                    {Math.round((user.wins / (user.wins + user.losses + user.draws)) * 100)}%
+                    {winRate}%
                   </span>
                 </div>
               </div>
@@ -104,12 +117,12 @@ export function Profile() {
             <div className="glass-card p-6 mt-4">
               <h3 className="text-sm font-semibold mb-4 text-secondary">Рейтинг по играм</h3>
               <div className="flex flex-col gap-3">
-                {Object.entries(user.elo).map(([game, elo]) => (
+                {Object.entries(eloMap).map(([game, elo]) => (
                   <div key={game}>
                     <div className="text-xs mb-1 text-muted">
                       {game === 'chess' ? 'Шахматы' : game === 'checkers' ? 'Шашки' : game === 'backgammon' ? 'Нарды' : 'Викторины'}
                     </div>
-                    <EloBar value={elo} max={2500} />
+                    <EloBar value={elo as number} max={2500} />
                   </div>
                 ))}
               </div>

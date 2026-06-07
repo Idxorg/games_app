@@ -130,6 +130,9 @@ async function request<T>(
     headers['Authorization'] = `Bearer ${token}`
   }
 
+  // Automatically add X-Erlink-Embed-Secret header for /auth/embed calls
+  // if the caller already set it (passed through via options.headers above),
+  // this is a no-op. We keep the request helper generic.
   const url = `${BASE_URL}${path}`
   const res = await fetch(url, { ...options, headers })
 
@@ -163,8 +166,16 @@ export function get<T>(path: string): Promise<T> {
   return request<T>(path)
 }
 
-export function post<T>(path: string, body?: unknown): Promise<T> {
-  return request<T>(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined })
+export function post<T>(path: string, body?: unknown, extraHeaders?: Record<string, string>): Promise<T> {
+  const headers: Record<string, string> = {}
+  if (extraHeaders) {
+    Object.assign(headers, extraHeaders)
+  }
+  return request<T>(path, {
+    method: 'POST',
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+  })
 }
 
 export function put<T>(path: string, body?: unknown): Promise<T> {
