@@ -18,6 +18,23 @@ const periodOptions = [
   { value: 'year', label: 'За год' },
 ]
 
+function LeaderboardSkeleton() {
+  return (
+    <div className="flex flex-col gap-2">
+      {Array.from({ length: 10 }).map((_, i) => (
+        <div key={i} className="glass-card p-4 flex items-center gap-4">
+          <div className="skeleton skeleton-circle" style={{ width: 32, height: 32 }} />
+          <div className="skeleton skeleton-circle" style={{ width: 40, height: 40 }} />
+          <div className="flex-grow">
+            <div className="skeleton skeleton-text" style={{ width: '40%' }} />
+            <div className="skeleton skeleton-text" style={{ width: '25%' }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function Leaderboard() {
   const store = useLeaderboardStore()
   const paged = store.getPaged()
@@ -27,7 +44,7 @@ export function Leaderboard() {
     <div className="py-8">
       <div className="container">
         <h1 className="text-3xl font-bold mb-2">Рейтинг</h1>
-        <p className="mb-6" style={{ color: 'var(--text-secondary)' }}>
+        <p className="mb-6 text-secondary">
           Таблица лидеров с рейтингом ELO по всем играм
         </p>
 
@@ -39,42 +56,20 @@ export function Leaderboard() {
                 key={opt.value}
                 onClick={() => store.setGameFilter(opt.value as any)}
                 className={`tab ${store.gameFilter === opt.value ? 'active' : ''}`}
-                style={store.gameFilter !== opt.value ? {
-                  background: 'var(--bg-glass)',
-                  border: '1px solid var(--bg-glass-border)',
-                  borderRadius: 'var(--radius-sm)',
-                  padding: '8px 16px',
-                  fontSize: '0.875rem',
-                  fontWeight: 500,
-                  color: 'var(--text-secondary)',
-                  cursor: 'pointer',
-                  fontFamily: 'var(--font-sans)',
-                } : undefined}
               >
                 {opt.label}
               </button>
             ))}
           </div>
 
-          <div style={{ borderLeft: '1px solid var(--bg-glass-border)', height: 24, margin: '0 8px' }} />
+          <div className="divider-vertical" />
 
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {periodOptions.map((opt) => (
               <button
                 key={opt.value}
                 onClick={() => store.setPeriodFilter(opt.value as any)}
                 className={`tab ${store.periodFilter === opt.value ? 'active' : ''}`}
-                style={store.periodFilter !== opt.value ? {
-                  background: 'var(--bg-glass)',
-                  border: '1px solid var(--bg-glass-border)',
-                  borderRadius: 'var(--radius-sm)',
-                  padding: '8px 16px',
-                  fontSize: '0.875rem',
-                  fontWeight: 500,
-                  color: 'var(--text-secondary)',
-                  cursor: 'pointer',
-                  fontFamily: 'var(--font-sans)',
-                } : undefined}
               >
                 {opt.label}
               </button>
@@ -83,7 +78,7 @@ export function Leaderboard() {
         </div>
 
         {/* Table Header */}
-        <div className="hidden md:flex items-center gap-4 px-4 py-2 mb-2 text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
+        <div className="hidden md:flex items-center gap-4 px-4 py-2 mb-2 text-xs font-semibold text-muted">
           <div className="w-10">Место</div>
           <div className="w-10" />
           <div className="flex-grow">Игрок</div>
@@ -95,12 +90,18 @@ export function Leaderboard() {
 
         {/* Rows */}
         {paged.map((player, i) => (
-          <LeaderboardRow
+          <motion.div
             key={player.sid}
-            player={player}
-            rank={(store.page - 1) * store.perPage + i + 1}
-            gameFilter={store.gameFilter}
-          />
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: (i % store.perPage) * 0.05 }}
+          >
+            <LeaderboardRow
+              player={player}
+              rank={(store.page - 1) * store.perPage + i + 1}
+              gameFilter={store.gameFilter}
+            />
+          </motion.div>
         ))}
 
         {/* Pagination */}
@@ -109,19 +110,17 @@ export function Leaderboard() {
             <button
               onClick={() => store.setPage(Math.max(1, store.page - 1))}
               disabled={store.page === 1}
-              className="btn btn-secondary"
-              style={{ opacity: store.page === 1 ? 0.4 : 1 }}
+              className={`btn btn-secondary ${store.page === 1 ? 'opacity-40' : ''}`}
             >
               <ChevronLeft size={16} />
             </button>
-            <span className="text-sm" style={{ color: 'var(--text-muted)' }}>
+            <span className="text-sm text-muted">
               {store.page} из {totalPages}
             </span>
             <button
               onClick={() => store.setPage(Math.min(totalPages, store.page + 1))}
               disabled={store.page === totalPages}
-              className="btn btn-secondary"
-              style={{ opacity: store.page === totalPages ? 0.4 : 1 }}
+              className={`btn btn-secondary ${store.page === totalPages ? 'opacity-40' : ''}`}
             >
               <ChevronRight size={16} />
             </button>

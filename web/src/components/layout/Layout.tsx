@@ -6,7 +6,7 @@ export function Layout() {
   return (
     <>
       <Header />
-      <main style={{ flex: 1 }}>
+      <main className="main-content">
         <Outlet />
       </main>
       <Footer />

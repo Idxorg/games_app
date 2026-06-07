@@ -15,19 +15,7 @@ function HeroSection() {
   return (
     <section className="py-16 md:py-24 relative overflow-hidden">
       {/* Background gradient */}
-      <div
-        style={{
-          position: 'absolute',
-          top: -200,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          width: 600,
-          height: 600,
-          borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(212,168,67,0.06) 0%, transparent 70%)',
-          pointerEvents: 'none',
-        }}
-      />
+      <div className="hero-bg-glow" />
 
       <div className="container relative z-10">
         <div className="flex flex-col lg:flex-row items-center gap-12">
@@ -40,16 +28,16 @@ function HeroSection() {
             >
               <div className="flex items-center gap-2 justify-center lg:justify-start mb-4">
                 <LiveIndicator />
-                <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                <span className="text-sm text-secondary">
                   {matches.filter((m) => m.result === 'win').length} активных партий
                 </span>
               </div>
               <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold mb-4" style={{ lineHeight: 1.1 }}>
                 Корпоративная
                 <br />
-                <span style={{ color: 'var(--gold)' }}>игровая платформа</span>
+                <span className="gold-gradient">игровая платформа</span>
               </h1>
-              <p className="text-lg mb-8 max-w-lg mx-auto lg:mx-0" style={{ color: 'var(--text-secondary)' }}>
+              <p className="text-lg mb-8 max-w-lg mx-auto lg:mx-0 text-secondary">
                 Соревнуйтесь с коллегами в шахматы, шашки, нарды и другие игры.
                 Турниры, рейтинг ELO и мгновенные матчи.
               </p>
@@ -65,15 +53,14 @@ function HeroSection() {
             </motion.div>
           </div>
 
-          {/* 3D Chess Board */}
+          {/* Chess Board */}
           <motion.div
             initial={{ opacity: 0, rotateY: -15 }}
             animate={{ opacity: 1, rotateY: 0 }}
             transition={{ duration: 0.8, delay: 0.2 }}
-            style={{ perspective: 800 }}
-            className="flex-shrink-0"
+            className="chess-board-wrapper flex-shrink-0"
           >
-            <div className="grid grid-cols-8 gap-0" style={{ transform: 'rotateX(10deg) rotateY(5deg)', boxShadow: '0 20px 60px rgba(0,0,0,0.5), 0 0 40px rgba(212,168,67,0.1)', borderRadius: 8, overflow: 'hidden' }}>
+            <div className="chess-board">
               {Array.from({ length: 64 }, (_, i) => {
                 const row = Math.floor(i / 8)
                 const col = i % 8
@@ -84,16 +71,8 @@ function HeroSection() {
                     initial={{ opacity: 0, scale: 0 }}
                     animate={{ opacity: 1, scale: 1 }}
                     transition={{ delay: 0.3 + i * 0.015, duration: 0.3 }}
-                    style={{
-                      width: 44,
-                      height: 44,
-                      background: isLight ? '#1a1a2e' : 'rgba(212,168,67,0.12)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
+                    className={`chess-square ${isLight ? 'chess-square-light' : 'chess-square-dark'}`}
                   >
-                    {/* Sample pieces on first/last rows */}
                     {row === 0 && (
                       <ChessPiece
                         type={['rook', 'knight', 'bishop', 'queen', 'king', 'bishop', 'knight', 'rook'][col] as any}
@@ -126,11 +105,16 @@ function LiveMatches() {
   return (
     <section className="py-8">
       <div className="container">
-        <div className="flex items-center gap-3 mb-6">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="flex items-center gap-3 mb-6"
+        >
           <Flame size={20} color="var(--danger)" />
           <h2 className="text-xl font-bold">Активные матчи</h2>
           <LiveIndicator />
-        </div>
+        </motion.div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {liveMatches.map((match, i) => {
             const p1 = players.find((p) => p.sid === match.player1Id)
@@ -145,12 +129,12 @@ function LiveMatches() {
               >
                 <div className="flex-grow">
                   <div className="flex items-center gap-2 text-sm">
-                    <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>{p1?.initials}</span>
-                    <span style={{ color: 'var(--text-muted)' }}>vs</span>
-                    <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>{p2?.initials}</span>
+                    <span className="font-semibold text-primary">{p1?.initials}</span>
+                    <span className="text-muted">vs</span>
+                    <span className="font-semibold text-primary">{p2?.initials}</span>
                   </div>
-                  <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                    Шахматы -- {match.duration}
+                  <div className="text-xs mt-1 text-muted">
+                    Шахматы — {match.duration}
                   </div>
                 </div>
                 <Zap size={16} color="var(--warning)" />
@@ -168,10 +152,21 @@ function StatsSection() {
     <section className="py-8">
       <div className="container">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <StatsCard label="Игроков онлайн" value={247} icon={<Zap size={24} />} color="var(--success)" />
-          <StatsCard label="Активных партий" value={58} icon={<Flame size={24} />} color="var(--warning)" />
-          <StatsCard label="Турниров" value={12} icon={<Trophy size={24} />} />
-          <StatsCard label="Матчей сыграно" value={4820} icon={<BarChart3 size={24} />} color="var(--info)" />
+          {[
+            { label: 'Игроков онлайн', value: 247, icon: <Zap size={24} />, color: 'var(--success)' },
+            { label: 'Активных партий', value: 58, icon: <Flame size={24} />, color: 'var(--warning)' },
+            { label: 'Турниров', value: 12, icon: <Trophy size={24} /> },
+            { label: 'Матчей сыграно', value: 4820, icon: <BarChart3 size={24} />, color: 'var(--info)' },
+          ].map((stat, i) => (
+            <motion.div
+              key={stat.label}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.1 }}
+            >
+              <StatsCard label={stat.label} value={stat.value} icon={stat.icon} color={stat.color} />
+            </motion.div>
+          ))}
         </div>
       </div>
     </section>
@@ -184,8 +179,8 @@ function GamesSection() {
     <section className="py-8">
       <div className="container">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="section-title mb-0" style={{ margin: 0 }}>Игры</h2>
-          <Link to="/leaderboard" className="btn btn-ghost text-sm no-underline">
+          <h2 className="section-title mb-0">Игры</h2>
+          <Link to="/games" className="btn btn-ghost text-sm no-underline">
             Все игры <ArrowRight size={14} />
           </Link>
         </div>
@@ -212,29 +207,35 @@ function TournamentPreview() {
   return (
     <section className="py-8">
       <div className="container">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="section-title mb-0" style={{ margin: 0 }}>Турниры</h2>
-          <Link to="/tournaments" className="btn btn-ghost text-sm no-underline">
-            Все турниры <ArrowRight size={14} />
-          </Link>
-        </div>
-        <div className="glass-card p-6 gold-border">
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <Trophy size={20} color="var(--gold)" />
-                <span className="badge badge-gold">Активный</span>
-              </div>
-              <h3 className="text-xl font-bold mb-1">{activeTournament.name}</h3>
-              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                {activeTournament.participants.length} участников -- Приз: {activeTournament.prize}
-              </p>
-            </div>
-            <Link to="/tournaments" className="btn btn-primary no-underline">
-              Смотреть сетку
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+        >
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="section-title mb-0">Турниры</h2>
+            <Link to="/tournaments" className="btn btn-ghost text-sm no-underline">
+              Все турниры <ArrowRight size={14} />
             </Link>
           </div>
-        </div>
+          <div className="glass-card p-6 gold-border">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <Trophy size={20} color="var(--gold)" />
+                  <span className="badge badge-gold">Активный</span>
+                </div>
+                <h3 className="text-xl font-bold mb-1">{activeTournament.name}</h3>
+                <p className="text-sm text-secondary">
+                  {activeTournament.participants.length} участников — Приз: {activeTournament.prize}
+                </p>
+              </div>
+              <Link to="/tournaments" className="btn btn-primary no-underline">
+                Смотреть сетку
+              </Link>
+            </div>
+          </div>
+        </motion.div>
       </div>
     </section>
   )
@@ -242,11 +243,17 @@ function TournamentPreview() {
 
 function TopLeaderboard() {
   const top3 = players.slice(0, 3)
+  const rankColors = ['var(--gold)', '#a0a0b0', '#cd7f32']
   return (
-    <section className="py-8 pb-16">
+    <motion.section
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.4 }}
+      className="py-8 pb-16"
+    >
       <div className="container">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="section-title mb-0" style={{ margin: 0 }}>Лучшие игроки</h2>
+          <h2 className="section-title mb-0">Лучшие игроки</h2>
           <Link to="/leaderboard" className="btn btn-ghost text-sm no-underline">
             Полный рейтинг <ArrowRight size={14} />
           </Link>
@@ -258,37 +265,33 @@ function TopLeaderboard() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.15 }}
-              className="glass-card p-5"
-              style={i === 0 ? { borderColor: 'rgba(212,168,67,0.3)', boxShadow: 'var(--shadow-gold)' } : {}}
+              className={`glass-card p-5 ${i === 0 ? 'gold-border gold-glow' : ''}`}
             >
               <div className="flex items-center gap-3 mb-3">
-                <div className="text-2xl font-bold" style={{ color: i === 0 ? 'var(--gold)' : i === 1 ? '#a0a0b0' : '#cd7f32', width: 32 }}>
+                <div className="text-2xl font-bold" style={{ color: rankColors[i], width: 32 }}>
                   #{i + 1}
                 </div>
-                <div
-                  className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold"
-                  style={{ background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', color: '#0a0a0f' }}
-                >
+                <div className="profile-avatar-md">
                   {player.initials}
                 </div>
                 <div>
                   <div className="font-semibold text-sm">{player.name}</div>
-                  <div className="text-xs" style={{ color: 'var(--text-muted)' }}>{player.department}</div>
+                  <div className="text-xs text-muted">{player.department}</div>
                 </div>
               </div>
               <div className="mb-2">
                 <EloBar value={player.elo.chess} max={2500} />
               </div>
               <div className="flex items-center gap-3 text-xs">
-                <span style={{ color: 'var(--success)' }}>{player.wins}В</span>
-                <span style={{ color: 'var(--danger)' }}>{player.losses}П</span>
-                <span style={{ color: 'var(--text-muted)' }}>{player.draws}Н</span>
+                <span className="text-success">{player.wins}В</span>
+                <span className="text-danger">{player.losses}П</span>
+                <span className="text-muted">{player.draws}Н</span>
               </div>
             </motion.div>
           ))}
         </div>
       </div>
-    </section>
+    </motion.section>
   )
 }
 

@@ -1,7 +1,9 @@
-import { useState, useCallback } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useState, useCallback, useRef, useEffect } from 'react'
+import { Link, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Search, Bell, ChevronDown, Menu, X, Gamepad2, Home, Trophy, BarChart3, Clock, User } from 'lucide-react'
+import { useUserStore } from '../../stores/userStore'
+import { useToastStore } from '../ui/Toast'
 
 const navItems = [
   { path: '/', label: 'Главная', icon: Home },
@@ -18,27 +20,49 @@ export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [notifications] = useState(3)
   const location = useLocation()
-  const navigate = useNavigate()
+  const dropdownRef = useRef<HTMLDivElement>(null)
+  const addToast = useToastStore((s) => s.addToast)
+  const logout = useUserStore((s) => s.logout)
 
   const handleSearch = useCallback((value: string) => {
     setSearchValue(value)
   }, [])
 
+  // Click-away handler for dropdown
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    if (menuOpen) {
+      document.addEventListener('click', handleClickOutside)
+    }
+    return () => document.removeEventListener('click', handleClickOutside)
+  }, [menuOpen])
+
+  // Close mobile menu on route change
+  useEffect(() => {
+    setMobileMenuOpen(false)
+  }, [location.pathname])
+
+  const handleNotificationClick = useCallback(() => {
+    addToast('Скоро: уведомления будут доступны', 'info')
+  }, [addToast])
+
+  const handleLogout = useCallback(() => {
+    setMenuOpen(false)
+    logout()
+    addToast('Вы вышли из системы', 'info')
+  }, [logout, addToast])
+
   return (
-    <header
-      className="glass"
-      style={{
-        position: 'sticky',
-        top: 0,
-        zIndex: 100,
-        borderBottom: '1px solid var(--bg-glass-border)',
-      }}
-    >
-      <div className="container flex items-center justify-between h-16">
+    <header className="glass header-sticky">
+      <div className="container flex-between header-inner">
         {/* Logo */}
         <Link to="/" className="flex items-center gap-3 no-underline">
           <Gamepad2 size={28} color="var(--gold)" />
-          <span className="text-lg font-bold" style={{ color: 'var(--gold)' }}>
+          <span className="text-lg font-bold text-accent">
             Game Portal
           </span>
         </Link>
@@ -51,11 +75,7 @@ export function Header() {
               <Link
                 key={item.path}
                 to={item.path}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium no-underline transition-all"
-                style={{
-                  color: isActive ? 'var(--gold)' : 'var(--text-secondary)',
-                  background: isActive ? 'rgba(212,168,67,0.08)' : 'transparent',
-                }}
+                className={`nav-link ${isActive ? 'nav-link-active' : ''}`}
               >
                 <item.icon size={16} />
                 {item.label}
@@ -80,13 +100,8 @@ export function Header() {
                   placeholder="Поиск игр..."
                   value={searchValue}
                   onChange={(e) => handleSearch(e.target.value)}
-                  className="w-full px-3 py-1.5 rounded-lg text-sm"
-                  style={{
-                    background: 'var(--bg-tertiary)',
-                    border: '1px solid var(--bg-glass-border)',
-                    color: 'var(--text-primary)',
-                    outline: 'none',
-                  }}
+                  className="search-input"
+                  aria-label="Поиск игр"
                   autoFocus
                 />
               </motion.div>
@@ -94,39 +109,36 @@ export function Header() {
           </AnimatePresence>
           <button
             onClick={() => setSearchOpen(!searchOpen)}
-            className="btn-ghost p-2 rounded-lg"
-            style={{ background: 'none', border: 'none', cursor: 'pointer' }}
+            className="btn-icon"
+            aria-label={searchOpen ? 'Закрыть поиск' : 'Открыть поиск'}
           >
-            <Search size={18} color="var(--text-secondary)" />
+            <Search size={18} />
           </button>
 
           {/* Notifications */}
           <button
-            className="btn-ghost p-2 rounded-lg relative"
-            style={{ background: 'none', border: 'none', cursor: 'pointer' }}
+            className="btn-icon relative"
+            onClick={handleNotificationClick}
+            aria-label="Уведомления"
           >
-            <Bell size={18} color="var(--text-secondary)" />
+            <Bell size={18} />
             {notifications > 0 && (
-              <span
-                className="absolute -top-0.5 -right-0.5 w-4 h-4 flex items-center justify-center rounded-full text-xs font-bold"
-                style={{ background: 'var(--danger)', color: '#fff', fontSize: 9 }}
-              >
+              <span className="notification-badge">
                 {notifications}
               </span>
             )}
           </button>
 
           {/* User Dropdown */}
-          <div className="relative hidden md:block">
+          <div className="relative hidden md:block" ref={dropdownRef}>
             <button
               onClick={() => setMenuOpen(!menuOpen)}
               className="flex items-center gap-2 px-2 py-1 rounded-lg cursor-pointer"
               style={{ background: 'none', border: 'none' }}
+              aria-label="Меню пользователя"
+              aria-expanded={menuOpen}
             >
-              <div
-                className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
-                style={{ background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))', color: '#0a0a0f' }}
-              >
+              <div className="profile-avatar-sm">
                 АП
               </div>
               <ChevronDown size={14} color="var(--text-muted)" />
@@ -137,17 +149,21 @@ export function Header() {
                   initial={{ opacity: 0, y: -8 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -8 }}
-                  className="glass-card absolute right-0 top-full mt-2 w-48 py-2"
-                  onClick={() => setMenuOpen(false)}
+                  className="dropdown-menu absolute right-0 top-full mt-2 w-48"
+                  onClick={(e) => e.stopPropagation()}
                 >
-                  <Link to="/profile" className="block px-4 py-2 text-sm no-underline" style={{ color: 'var(--text-primary)' }}>
+                  <Link to="/profile" className="dropdown-item">
                     Мой профиль
                   </Link>
-                  <Link to="/matches" className="block px-4 py-2 text-sm no-underline" style={{ color: 'var(--text-primary)' }}>
+                  <Link to="/matches" className="dropdown-item">
                     История матчей
                   </Link>
-                  <div style={{ borderTop: '1px solid var(--bg-glass-border)', margin: '8px 0' }} />
-                  <button className="block w-full text-left px-4 py-2 text-sm" style={{ color: 'var(--danger)', background: 'none', border: 'none', cursor: 'pointer' }}>
+                  <div className="dropdown-divider" />
+                  <button
+                    className="dropdown-item"
+                    style={{ color: 'var(--danger)' }}
+                    onClick={handleLogout}
+                  >
                     Выйти
                   </button>
                 </motion.div>
@@ -158,10 +174,11 @@ export function Header() {
           {/* Mobile Menu Toggle */}
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden p-2 rounded-lg"
-            style={{ background: 'none', border: 'none', cursor: 'pointer' }}
+            className="btn-icon md:hidden"
+            aria-label={mobileMenuOpen ? 'Закрыть меню' : 'Открыть меню'}
+            aria-expanded={mobileMenuOpen}
           >
-            {mobileMenuOpen ? <X size={20} color="var(--text-primary)" /> : <Menu size={20} color="var(--text-secondary)" />}
+            {mobileMenuOpen ? <X size={20} color="var(--text-primary)" /> : <Menu size={20} />}
           </button>
         </div>
       </div>
@@ -184,11 +201,7 @@ export function Header() {
                     key={item.path}
                     to={item.path}
                     onClick={() => setMobileMenuOpen(false)}
-                    className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium no-underline"
-                    style={{
-                      color: isActive ? 'var(--gold)' : 'var(--text-secondary)',
-                      background: isActive ? 'rgba(212,168,67,0.08)' : 'transparent',
-                    }}
+                    className={`nav-link-mobile ${isActive ? 'nav-link-active' : ''}`}
                   >
                     <item.icon size={18} />
                     {item.label}

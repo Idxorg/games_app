@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
 import { Trophy, Users, Calendar, Gift, ChevronDown, ChevronUp } from 'lucide-react'
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { TournamentBracket } from '../components/ui/TournamentBracket'
 import { Countdown } from '../components/ui/Countdown'
 import { LiveIndicator } from '../components/ui/LiveIndicator'
@@ -10,13 +11,14 @@ import { players } from '../data/players'
 const statusLabels = {
   active: { text: 'Активный', badgeClass: 'badge-success', icon: LiveIndicator },
   upcoming: { text: 'Предстоящий', badgeClass: 'badge-gold', icon: Calendar },
-  completed: { text: 'Завершён', badgeClass: 'badge-danger', icon: Trophy },
+  completed: { text: 'Завершён', badgeClass: 'badge-neutral', icon: Trophy },
 }
 
 function TournamentCard({ tournamentId, index }: { tournamentId: string; index: number }) {
   const { tournaments } = useTournamentStore()
   const tournament = tournaments.find((t) => t.id === tournamentId)
   const [expanded, setExpanded] = useState(false)
+  const navigate = useNavigate()
 
   if (!tournament) return null
 
@@ -27,7 +29,8 @@ function TournamentCard({ tournamentId, index }: { tournamentId: string; index: 
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.1 }}
-      className="glass-card overflow-hidden"
+      className="glass-card overflow-hidden cursor-pointer"
+      onClick={() => navigate(`/tournaments/${tournament.id}`)}
     >
       {/* Header */}
       <div className="p-6">
@@ -36,8 +39,8 @@ function TournamentCard({ tournamentId, index }: { tournamentId: string; index: 
             <Trophy size={24} color="var(--gold)" />
             <div>
               <h3 className="text-lg font-bold">{tournament.name}</h3>
-              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                Шахматы -- {tournament.startDate} -- {tournament.endDate}
+              <p className="text-sm text-muted">
+                Шахматы — {tournament.startDate} — {tournament.endDate}
               </p>
             </div>
           </div>
@@ -47,11 +50,11 @@ function TournamentCard({ tournamentId, index }: { tournamentId: string; index: 
         </div>
 
         <div className="flex flex-wrap items-center gap-6 mb-4">
-          <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
+          <div className="flex items-center gap-2 text-sm text-secondary">
             <Users size={16} />
             <span>{tournament.participants.length} участников</span>
           </div>
-          <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
+          <div className="flex items-center gap-2 text-sm text-secondary">
             <Gift size={16} />
             <span>{tournament.prize}</span>
           </div>
@@ -60,18 +63,13 @@ function TournamentCard({ tournamentId, index }: { tournamentId: string; index: 
         {/* Participants */}
         {tournament.participants.length > 0 && (
           <div className="flex items-center gap-2 mb-4">
-            <div className="flex -space-x-2">
+            <div className="avatar-stack">
               {tournament.participants.slice(0, 6).map((pid) => {
                 const p = players.find((pl) => pl.sid === pid)
                 return (
                   <div
                     key={pid}
-                    className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2"
-                    style={{
-                      background: 'linear-gradient(135deg, var(--gold), var(--gold-dark))',
-                      color: '#0a0a0f',
-                      borderColor: 'var(--bg-primary)',
-                    }}
+                    className="avatar-sm"
                     title={p?.name}
                   >
                     {p?.initials}
@@ -79,10 +77,7 @@ function TournamentCard({ tournamentId, index }: { tournamentId: string; index: 
                 )
               })}
               {tournament.participants.length > 6 && (
-                <div
-                  className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2"
-                  style={{ background: 'var(--bg-tertiary)', color: 'var(--text-muted)', borderColor: 'var(--bg-primary)' }}
-                >
+                <div className="avatar-sm avatar-sm-neutral">
                   +{tournament.participants.length - 6}
                 </div>
               )}
@@ -98,7 +93,7 @@ function TournamentCard({ tournamentId, index }: { tournamentId: string; index: 
         )}
 
         {/* Actions */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
           {tournament.status === 'upcoming' && (
             <button className="btn btn-primary">Зарегистрироваться</button>
           )}
@@ -123,14 +118,31 @@ function TournamentCard({ tournamentId, index }: { tournamentId: string; index: 
           initial={{ height: 0, opacity: 0 }}
           animate={{ height: 'auto', opacity: 1 }}
           transition={{ duration: 0.3 }}
-          style={{ borderTop: '1px solid var(--bg-glass-border)' }}
-          className="p-6"
+          className="p-6 divider"
         >
-          <h4 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-secondary)' }}>Турнирная сетка</h4>
+          <h4 className="text-sm font-semibold mb-4 text-secondary">Турнирная сетка</h4>
           <TournamentBracket rounds={tournament.rounds} />
         </motion.div>
       )}
     </motion.div>
+  )
+}
+
+function TournamentSkeleton() {
+  return (
+    <div className="glass-card p-6">
+      <div className="flex items-center gap-3 mb-4">
+        <div className="skeleton skeleton-circle" style={{ width: 24, height: 24 }} />
+        <div className="skeleton skeleton-title" style={{ width: '40%' }} />
+      </div>
+      <div className="flex gap-6 mb-4">
+        <div className="skeleton skeleton-text" style={{ width: 120 }} />
+        <div className="skeleton skeleton-text" style={{ width: 80 }} />
+      </div>
+      <div className="flex gap-3">
+        <div className="skeleton" style={{ width: 160, height: 36, borderRadius: 'var(--radius-sm)' }} />
+      </div>
+    </div>
   )
 }
 
@@ -142,7 +154,7 @@ export function Tournaments() {
     <div className="py-8">
       <div className="container">
         <h1 className="text-3xl font-bold mb-2">Турниры</h1>
-        <p className="mb-6" style={{ color: 'var(--text-secondary)' }}>
+        <p className="mb-6 text-secondary">
           Участвуйте в корпоративных турнирах и выигрывайте призы
         </p>
 
@@ -167,8 +179,8 @@ export function Tournaments() {
             ))
           ) : (
             <div className="glass-card p-12 text-center">
-              <Trophy size={48} color="var(--text-muted)" style={{ margin: '0 auto 16px' }} />
-              <p style={{ color: 'var(--text-muted)' }}>Нет турниров в этой категории</p>
+              <Trophy size={48} color="var(--text-muted)" className="mx-auto mb-4" />
+              <p className="text-muted">Нет турниров в этой категории</p>
             </div>
           )}
         </div>
