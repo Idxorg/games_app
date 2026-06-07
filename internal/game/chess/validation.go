@@ -224,7 +224,9 @@ func (g *Game) castlingMoves(pos Position, piece Piece) []Move {
 	if piece.Color == White {
 		// Kingside: e1-g1, rook h1
 		if g.CastlingRights.WhiteKingside && !g.WhiteKingMoved && !g.WhiteRookMoved[1] {
-			if g.Board[0][5].Empty() && g.Board[0][6].Empty() {
+			rook := g.Board[0][7]
+			if rook.Type == Rook && rook.Color == White &&
+				g.Board[0][5].Empty() && g.Board[0][6].Empty() {
 				moves = append(moves, Move{
 					From:         pos,
 					To:           Position{6, 0},
@@ -236,7 +238,9 @@ func (g *Game) castlingMoves(pos Position, piece Piece) []Move {
 		}
 		// Queenside: e1-c1, rook a1
 		if g.CastlingRights.WhiteQueenside && !g.WhiteKingMoved && !g.WhiteRookMoved[0] {
-			if g.Board[0][3].Empty() && g.Board[0][2].Empty() && g.Board[0][1].Empty() {
+			rook := g.Board[0][0]
+			if rook.Type == Rook && rook.Color == White &&
+				g.Board[0][3].Empty() && g.Board[0][2].Empty() && g.Board[0][1].Empty() {
 				moves = append(moves, Move{
 					From:         pos,
 					To:           Position{2, 0},
@@ -249,7 +253,9 @@ func (g *Game) castlingMoves(pos Position, piece Piece) []Move {
 	} else {
 		// Kingside: e8-g8, rook h8
 		if g.CastlingRights.BlackKingside && !g.BlackKingMoved && !g.BlackRookMoved[1] {
-			if g.Board[7][5].Empty() && g.Board[7][6].Empty() {
+			rook := g.Board[7][7]
+			if rook.Type == Rook && rook.Color == Black &&
+				g.Board[7][5].Empty() && g.Board[7][6].Empty() {
 				moves = append(moves, Move{
 					From:         pos,
 					To:           Position{6, 7},
@@ -261,7 +267,9 @@ func (g *Game) castlingMoves(pos Position, piece Piece) []Move {
 		}
 		// Queenside: e8-c8, rook a8
 		if g.CastlingRights.BlackQueenside && !g.BlackKingMoved && !g.BlackRookMoved[0] {
-			if g.Board[7][3].Empty() && g.Board[7][2].Empty() && g.Board[7][1].Empty() {
+			rook := g.Board[7][0]
+			if rook.Type == Rook && rook.Color == Black &&
+				g.Board[7][3].Empty() && g.Board[7][2].Empty() && g.Board[7][1].Empty() {
 				moves = append(moves, Move{
 					From:         pos,
 					To:           Position{2, 7},
@@ -428,10 +436,6 @@ func (g *Game) wouldBeInCheck(move Move) bool {
 		g.Board[move.From.Rank][move.To.File] = *origEP
 	}
 	if move.IsCastling {
-		g.Board[move.From.Rank][7] = origRookFrom
-		g.Board[move.From.Rank][5] = origRookTo
-		g.Board[move.From.Rank][0] = origRookFrom
-		g.Board[move.From.Rank][3] = origRookTo
 		if move.CastlingSide == "K" {
 			g.Board[move.From.Rank][7] = origRookFrom
 			g.Board[move.From.Rank][5] = origRookTo

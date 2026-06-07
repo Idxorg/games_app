@@ -124,15 +124,18 @@ func TestLegalMoves_Queen(t *testing.T) {
 func TestLegalMoves_King(t *testing.T) {
 	g := NewGame()
 	g.Board = Board{}
+	g.CastlingRights = CastlingRights{} // no castling on empty board
 	e1 := Position{4, 0}
 	g.Board[0][4] = Piece{King, White}
 	g.Turn = White
 
 	moves := g.LegalMoves(e1)
 	// King at e1 (rank 0, file 4) on empty board: d1, d2, e2, f2, f1 = 5 moves
-	// Some engines may allow more if board edge check is lenient
-	if len(moves) < 5 {
-		t.Errorf("expected at least 5 king moves from e1, got %d", len(moves))
+	if len(moves) != 5 {
+		t.Errorf("expected exactly 5 king moves from e1 on empty board, got %d", len(moves))
+		for _, m := range moves {
+			t.Logf("  %s -> %s", m.From.Algebraic(), m.To.Algebraic())
+		}
 	}
 }
 

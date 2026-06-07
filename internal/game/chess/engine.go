@@ -438,6 +438,28 @@ func (g *Game) FromFEN(fen string) error {
 	g.WhiteKingMoved = !g.CastlingRights.WhiteKingside && !g.CastlingRights.WhiteQueenside
 	g.BlackKingMoved = !g.CastlingRights.BlackKingside && !g.CastlingRights.BlackQueenside
 
+	// Also check if king is actually on its starting square
+	{
+		wk := g.Board[0][4]
+		if wk.Type == King && wk.Color == White {
+			g.WhiteKingMoved = false
+		} else {
+			g.WhiteKingMoved = true
+		}
+		bk := g.Board[7][4]
+		if bk.Type == King && bk.Color == Black {
+			g.BlackKingMoved = false
+		} else {
+			g.BlackKingMoved = true
+		}
+	}
+
+	// Check if rooks are actually on their starting squares
+	g.WhiteRookMoved[0] = g.Board[0][0].Type != Rook || g.Board[0][0].Color != White
+	g.WhiteRookMoved[1] = g.Board[0][7].Type != Rook || g.Board[0][7].Color != White
+	g.BlackRookMoved[0] = g.Board[7][0].Type != Rook || g.Board[7][0].Color != Black
+	g.BlackRookMoved[1] = g.Board[7][7].Type != Rook || g.Board[7][7].Color != Black
+
 	g.updateState()
 	g.PositionHistory[g.ToFEN()] = 1
 
