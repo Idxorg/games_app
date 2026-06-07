@@ -21,6 +21,7 @@ type RoomManager struct {
 	rooms     map[string]*GameRoom
 	jwtSecret string
 	matchRepo model.MatchRepo
+	ratingSvc RatingUpdater
 }
 
 // NewRoomManager creates a new RoomManager.
@@ -51,6 +52,9 @@ func (rm *RoomManager) CreateRoom(matchID, gameType string) *GameRoom {
 	room := NewGameRoom(matchID, gameType)
 	if rm.matchRepo != nil {
 		room.SetMatchRepo(rm.matchRepo)
+	}
+	if rm.ratingSvc != nil {
+		room.SetRatingService(rm.ratingSvc)
 	}
 	rm.rooms[matchID] = room
 	slog.Info("room created", "match_id", matchID, "game_type", gameType)
@@ -231,6 +235,14 @@ func (rm *RoomManager) SetMatchRepo(repo model.MatchRepo) {
 	rm.mu.Lock()
 	defer rm.mu.Unlock()
 	rm.matchRepo = repo
+}
+
+// SetRatingService sets the rating updater on the room manager so newly
+// created rooms get it automatically.
+func (rm *RoomManager) SetRatingService(svc RatingUpdater) {
+	rm.mu.Lock()
+	defer rm.mu.Unlock()
+	rm.ratingSvc = svc
 }
 
 // SetJWTSecret sets the JWT secret (for dependency injection after creation).

@@ -370,3 +370,68 @@ func (m *MockInviteRepo) ExpireOld(_ context.Context) error {
 	}
 	return nil
 }
+
+// ---------------------------------------------------------------------------
+// MockRatingUpdater (implements websocket.RatingUpdater)
+// ---------------------------------------------------------------------------
+
+// MockRatingUpdater records calls to UpdateMatchRatings for test assertions.
+type MockRatingUpdater struct {
+	mu    sync.Mutex
+	Calls []MockRatingCall
+	Err   error // optional error to return
+}
+
+// MockRatingCall captures a single call to UpdateMatchRatings.
+type MockRatingCall struct {
+	MatchID    string
+	GameType   string
+	Player1SID string
+	Player2SID string
+	WinnerSID  string
+	Score      string
+}
+
+func (m *MockRatingUpdater) UpdateMatchRatings(_ context.Context, match *model.Match) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.Calls = append(m.Calls, MockRatingCall{
+		MatchID:    match.ID,
+		GameType:   match.GameType,
+		Player1SID: match.Player1SID,
+		Player2SID: match.Player2SID,
+		WinnerSID:  match.WinnerSID,
+		Score:      match.Score,
+	})
+	return m.Err
+}
+
+func (m *MockRatingUpdater) CallCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.Calls)
+}
+
+// ---------------------------------------------------------------------------
+// MockNotificationPublisher (implements handler.NotificationPublisher)
+// ---------------------------------------------------------------------------
+
+// MockNotificationPublisher records published events for test assertions.
+type MockNotificationPublisher struct {
+	mu     sync.Mutex
+	Events []map[string]interface{}
+	Err    error // optional error to return
+}
+
+func (m *MockNotificationPublisher) PublishEvent(event map[string]interface{}) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.Events = append(m.Events, event)
+	return m.Err
+}
+
+func (m *MockNotificationPublisher) EventCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.Events)
+}

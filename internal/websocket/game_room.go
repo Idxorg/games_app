@@ -36,6 +36,7 @@ type GameRoom struct {
 
 	// Persistence
 	matchRepo   model.MatchRepo
+	ratingSvc   RatingUpdater
 	moveHistory []map[string]interface{} // tracked moves for match persistence
 
 	// Test hook: when non-nil, all broadcast/error messages are also sent here.
@@ -71,6 +72,13 @@ func (r *GameRoom) SetMatchRepo(repo model.MatchRepo) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.matchRepo = repo
+}
+
+// SetRatingService sets the rating update service.
+func (r *GameRoom) SetRatingService(svc RatingUpdater) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.ratingSvc = svc
 }
 
 // Engine returns the game engine adapter (for testing/introspection).
@@ -463,10 +471,28 @@ func (r *GameRoom) persistGameComplete() {
 	}
 
 	movesJSON, _ := json.Marshal(r.moveHistory)
+
+	// Build match model for rating update (capture needed values under lock).
+	matchModel := &model.Match{
+		ID:         r.matchID,
+		GameType:   r.gameType,
+		Player1SID: r.player1SID,
+		Player2SID: r.player2SID,
+		WinnerSID:  r.winnerSID,
+		Score:      score,
+		Status:     "completed",
+	}
+	ratingSvc := r.ratingSvc
+
 	go func() {
 		err := r.matchRepo.Complete(nil, r.matchID, r.winnerSID, score, movesJSON)
 		if err != nil {
 			slog.Error("failed to persist game complete", "match_id", r.matchID, "error", err)
+		}
+		if ratingSvc != nil {
+			if err := ratingSvc.UpdateMatchRatings(nil, matchModel); err != nil {
+				slog.Error("failed to update ratings on game over", "match_id", r.matchID, "error", err)
+			}
 		}
 	}()
 }

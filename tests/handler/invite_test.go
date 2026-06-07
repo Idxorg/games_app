@@ -62,6 +62,13 @@ func TestCreateInvite_Success(t *testing.T) {
 	if invite.ID == "" {
 		t.Error("Expected invite ID to be set")
 	}
+
+	// Verify inviter_name field exists (will be empty without userRepo)
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if _, ok := resp["inviter_name"]; !ok {
+		t.Error("Expected inviter_name field in response")
+	}
 }
 
 func TestCreateInvite_InvalidGameType(t *testing.T) {
@@ -223,6 +230,15 @@ func TestGetPendingInvites(t *testing.T) {
 	if count != 2 {
 		t.Errorf("Expected 2 pending invites, got %d", count)
 	}
+	// Verify invites have inviter_name field
+	invites := resp["invites"].([]interface{})
+	if len(invites) == 0 {
+		t.Fatal("expected non-empty invites")
+	}
+	first := invites[0].(map[string]interface{})
+	if _, ok := first["inviter_name"]; !ok {
+		t.Error("Expected inviter_name field in pending invite items")
+	}
 }
 
 func TestGetPendingInvites_Empty(t *testing.T) {
@@ -249,6 +265,105 @@ func TestGetPendingInvites_Empty(t *testing.T) {
 	invites := resp["invites"].([]interface{})
 	if len(invites) != 0 {
 		t.Errorf("Expected empty invites array, got %d items", len(invites))
+	}
+}
+
+func TestCreateInvite_WithInviterName(t *testing.T) {
+	inviteRepo := mocks.NewMockInviteRepo()
+	matchRepo := mocks.NewMockMatchRepo()
+	userRepo := mocks.NewMockUserRepo()
+	userRepo.Create(nil, "emp_111", "emp_111@test.com", "Alice Smith", "female", "eng", "dev", "")
+
+	ih := handler.NewInviteHandler(inviteRepo, matchRepo)
+	ih.SetUserRepo(userRepo)
+
+	pub := &mocks.MockNotificationPublisher{}
+	ih.SetNotificationsClient(pub)
+
+	router := setupInviteRouter(ih, "emp_111")
+	body := `{"game_type":"chess","recipient_sid":"emp_222"}`
+	req, _ := http.NewRequest("POST", "/api/v1/games/invite", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("Expected 201, got %d; body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp["inviter_name"] != "Alice Smith" {
+		t.Errorf("Expected inviter_name 'Alice Smith', got %v", resp["inviter_name"])
+	}
+
+	// Verify notification published
+	if pub.EventCount() != 1 {
+		t.Fatalf("Expected 1 notification event, got %d", pub.EventCount())
+	}
+	evt := pub.Events[0]
+	if evt["type"] != "game.invite" {
+		t.Errorf("Expected notification type game.invite, got %v", evt["type"])
+	}
+}
+
+func TestAcceptInvite_PublishesNotification(t *testing.T) {
+	inviteRepo := mocks.NewMockInviteRepo()
+	matchRepo := mocks.NewMockMatchRepo()
+	pub := &mocks.MockNotificationPublisher{}
+
+	ih := handler.NewInviteHandler(inviteRepo, matchRepo)
+	ih.SetNotificationsClient(pub)
+
+	invite := &model.GameInvite{
+		GameType:     "chess", InviterSID: "emp_111", RecipientSID: "emp_222",
+		Status: "pending", ExpiresAt: time.Now().Add(5 * time.Minute),
+	}
+	inviteRepo.Create(nil, invite)
+
+	router := setupInviteRouter(ih, "emp_222")
+	req, _ := http.NewRequest("POST", "/api/v1/games/invite/"+invite.ID+"/accept", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d; body: %s", w.Code, w.Body.String())
+	}
+	if pub.EventCount() != 1 {
+		t.Fatalf("Expected 1 notification, got %d", pub.EventCount())
+	}
+	if pub.Events[0]["type"] != "game.invite.accepted" {
+		t.Errorf("Expected game.invite.accepted, got %v", pub.Events[0]["type"])
+	}
+}
+
+func TestDeclineInvite_PublishesNotification(t *testing.T) {
+	inviteRepo := mocks.NewMockInviteRepo()
+	matchRepo := mocks.NewMockMatchRepo()
+	pub := &mocks.MockNotificationPublisher{}
+
+	ih := handler.NewInviteHandler(inviteRepo, matchRepo)
+	ih.SetNotificationsClient(pub)
+
+	invite := &model.GameInvite{
+		GameType:     "checkers", InviterSID: "emp_111", RecipientSID: "emp_222",
+		Status: "pending", ExpiresAt: time.Now().Add(5 * time.Minute),
+	}
+	inviteRepo.Create(nil, invite)
+
+	router := setupInviteRouter(ih, "emp_222")
+	req, _ := http.NewRequest("POST", "/api/v1/games/invite/"+invite.ID+"/decline", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d; body: %s", w.Code, w.Body.String())
+	}
+	if pub.EventCount() != 1 {
+		t.Fatalf("Expected 1 notification, got %d", pub.EventCount())
+	}
+	if pub.Events[0]["type"] != "game.invite.declined" {
+		t.Errorf("Expected game.invite.declined, got %v", pub.Events[0]["type"])
 	}
 }
 

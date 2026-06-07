@@ -1,5 +1,11 @@
 package websocket
 
+import (
+	"context"
+
+	"game-platform/internal/model"
+)
+
 // WSMove represents a move in the WebSocket protocol format.
 type WSMove struct {
 	From      string `json:"from,omitempty"`       // e.g. "e2"
@@ -16,6 +22,13 @@ type WSMove struct {
 type WSPosition struct {
 	Row int `json:"row"`
 	Col int `json:"col"`
+}
+
+// RatingUpdater is the interface for updating Elo ratings after a match completes.
+// GameRoom uses this to trigger rating updates on game_over without depending
+// on the concrete RatingService.
+type RatingUpdater interface {
+	UpdateMatchRatings(ctx context.Context, match *model.Match) error
 }
 
 // GameEngineAdapter is the interface all game adapters must implement.

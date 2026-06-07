@@ -706,6 +706,123 @@ func TestChessGame_PersistOnDraw(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Rating update on game_over tests
+// ---------------------------------------------------------------------------
+
+func TestChessGame_RatingUpdateOnResign(t *testing.T) {
+	mockRepo := mocks.NewMockMatchRepo()
+	match := &model.Match{
+		ID:         "match-rating-1",
+		GameType:   "chess",
+		Player1SID: "p1",
+		Player2SID: "p2",
+		Status:     "playing",
+	}
+	mockRepo.Create(nil, match)
+
+	ratingUpdater := &mocks.MockRatingUpdater{}
+
+	room := ws.NewGameRoom("match-rating-1", "chess")
+	room.SetMatchRepo(mockRepo)
+	room.SetRatingService(ratingUpdater)
+	joinRoom(t, room, "p1", "p2")
+
+	// White resigns
+	room.HandleResign("p1")
+	readMsg(t, room.TestMsgCh, time.Second)
+
+	// Give the async rating update time to complete
+	time.Sleep(100 * time.Millisecond)
+
+	if ratingUpdater.CallCount() != 1 {
+		t.Fatalf("Expected 1 rating update call, got %d", ratingUpdater.CallCount())
+	}
+	call := ratingUpdater.Calls[0]
+	if call.MatchID != "match-rating-1" {
+		t.Errorf("Expected match_id match-rating-1, got %s", call.MatchID)
+	}
+	if call.GameType != "chess" {
+		t.Errorf("Expected game_type chess, got %s", call.GameType)
+	}
+	if call.WinnerSID != "p2" {
+		t.Errorf("Expected winner p2, got %s", call.WinnerSID)
+	}
+	if call.Score != "0-1" {
+		t.Errorf("Expected score 0-1, got %s", call.Score)
+	}
+	if call.Player1SID != "p1" {
+		t.Errorf("Expected player1 p1, got %s", call.Player1SID)
+	}
+	if call.Player2SID != "p2" {
+		t.Errorf("Expected player2 p2, got %s", call.Player2SID)
+	}
+}
+
+func TestChessGame_RatingUpdateOnDraw(t *testing.T) {
+	mockRepo := mocks.NewMockMatchRepo()
+	match := &model.Match{
+		ID:         "match-rating-draw",
+		GameType:   "chess",
+		Player1SID: "p1",
+		Player2SID: "p2",
+		Status:     "playing",
+	}
+	mockRepo.Create(nil, match)
+
+	ratingUpdater := &mocks.MockRatingUpdater{}
+
+	room := ws.NewGameRoom("match-rating-draw", "chess")
+	room.SetMatchRepo(mockRepo)
+	room.SetRatingService(ratingUpdater)
+	joinRoom(t, room, "p1", "p2")
+
+	// Mutual draw
+	room.HandleDrawOffer("p1")
+	readMsg(t, room.TestMsgCh, time.Second)
+	room.HandleDrawAccept("p2")
+	readMsg(t, room.TestMsgCh, time.Second)
+
+	time.Sleep(100 * time.Millisecond)
+
+	if ratingUpdater.CallCount() != 1 {
+		t.Fatalf("Expected 1 rating update call, got %d", ratingUpdater.CallCount())
+	}
+	call := ratingUpdater.Calls[0]
+	if call.WinnerSID != "" {
+		t.Errorf("Expected empty winner for draw, got %s", call.WinnerSID)
+	}
+	if call.Score != "0-0" {
+		t.Errorf("Expected score 0-0 for draw, got %s", call.Score)
+	}
+}
+
+func TestChessGame_NoRatingUpdateWhenNil(t *testing.T) {
+	mockRepo := mocks.NewMockMatchRepo()
+	match := &model.Match{
+		ID:         "match-norating",
+		GameType:   "chess",
+		Player1SID: "p1",
+		Player2SID: "p2",
+		Status:     "playing",
+	}
+	mockRepo.Create(nil, match)
+
+	room := ws.NewGameRoom("match-norating", "chess")
+	room.SetMatchRepo(mockRepo)
+	// NO rating service set
+	joinRoom(t, room, "p1", "p2")
+
+	room.HandleResign("p1")
+	readMsg(t, room.TestMsgCh, time.Second)
+	time.Sleep(100 * time.Millisecond)
+
+	// Should still work fine, no crash
+	if !room.IsGameOver() {
+		t.Error("game should be over")
+	}
+}
+
+// ---------------------------------------------------------------------------
 // RoomManager integration tests
 // ---------------------------------------------------------------------------
 

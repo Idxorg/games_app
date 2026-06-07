@@ -11,10 +11,27 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// NotificationPublisher is the interface for publishing events to a notification system.
+type NotificationPublisher interface {
+	PublishEvent(event map[string]interface{}) error
+}
+
 // InviteHandler handles game invite endpoints.
 type InviteHandler struct {
 	inviteRepo model.InviteRepo
 	matchRepo  model.MatchRepo
+	userRepo   model.UserRepo
+	notifier   NotificationPublisher
+}
+
+// SetUserRepo sets the user repository (for resolving inviter names).
+func (h *InviteHandler) SetUserRepo(repo model.UserRepo) {
+	h.userRepo = repo
+}
+
+// SetNotificationsClient sets the notification publisher.
+func (h *InviteHandler) SetNotificationsClient(client NotificationPublisher) {
+	h.notifier = client
 }
 
 // NewInviteHandler creates a new InviteHandler.
@@ -90,7 +107,36 @@ func (h *InviteHandler) CreateInvite(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, invite)
+	// Resolve inviter name
+	inviterName := ""
+	if h.userRepo != nil {
+		if u, err := h.userRepo.GetBySID(c.Request.Context(), inviterSID); err == nil && u != nil {
+			inviterName = u.Name
+		}
+	}
+
+	// Publish notification
+	if h.notifier != nil {
+		_ = h.notifier.PublishEvent(map[string]interface{}{
+			"type":          "game.invite",
+			"invite_id":     invite.ID,
+			"game_type":     invite.GameType,
+			"inviter_sid":   invite.InviterSID,
+			"inviter_name":  inviterName,
+			"recipient_sid": invite.RecipientSID,
+		})
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"id":            invite.ID,
+		"game_type":     invite.GameType,
+		"inviter_sid":   invite.InviterSID,
+		"inviter_name":  inviterName,
+		"recipient_sid": invite.RecipientSID,
+		"status":        invite.Status,
+		"created_at":    invite.CreatedAt,
+		"expires_at":    invite.ExpiresAt,
+	})
 }
 
 // AcceptInvite handles POST /api/v1/games/invite/:id/accept.
@@ -166,6 +212,18 @@ func (h *InviteHandler) AcceptInvite(c *gin.Context) {
 	invite.Status = "accepted"
 	invite.MatchID = &createdMatch.ID
 
+	// Publish notification on accept
+	if h.notifier != nil {
+		_ = h.notifier.PublishEvent(map[string]interface{}{
+			"type":          "game.invite.accepted",
+			"invite_id":     invite.ID,
+			"match_id":      createdMatch.ID,
+			"game_type":     invite.GameType,
+			"inviter_sid":   invite.InviterSID,
+			"recipient_sid": invite.RecipientSID,
+		})
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"invite":  invite,
 		"match":   createdMatch,
@@ -218,6 +276,16 @@ func (h *InviteHandler) DeclineInvite(c *gin.Context) {
 		return
 	}
 
+	// Publish notification on decline
+	if h.notifier != nil {
+		_ = h.notifier.PublishEvent(map[string]interface{}{
+			"type":          "game.invite.declined",
+			"invite_id":     inviteID,
+			"inviter_sid":   invite.InviterSID,
+			"recipient_sid": invite.RecipientSID,
+		})
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"invite":  invite,
 		"message": "invite declined",
@@ -248,8 +316,24 @@ func (h *InviteHandler) GetPendingInvites(c *gin.Context) {
 		invites = []model.GameInvite{}
 	}
 
+	// Resolve inviter names for each invite
+	type inviteWithNames struct {
+		model.GameInvite
+		InviterName string `json:"inviter_name"`
+	}
+	result := make([]inviteWithNames, len(invites))
+	for i, inv := range invites {
+		name := ""
+		if h.userRepo != nil {
+			if u, err := h.userRepo.GetBySID(c.Request.Context(), inv.InviterSID); err == nil && u != nil {
+				name = u.Name
+			}
+		}
+		result[i] = inviteWithNames{GameInvite: inv, InviterName: name}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"invites": invites,
-		"count":   len(invites),
+		"invites": result,
+		"count":   len(result),
 	})
 }
