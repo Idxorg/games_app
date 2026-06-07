@@ -645,7 +645,7 @@ func TestAI_BestMove(t *testing.T) {
 	g.BlackOff = 14
 	g.RemainingMoves = []int{3}
 
-	best := BestMove(g)
+	best := BestMove(g, 2)
 	assert(t, best.From == 10 && best.To == 7,
 		"AI should prefer hitting (from=10 to=7), got from=%d to=%d",
 		best.From, best.To)
@@ -882,7 +882,7 @@ func BenchmarkBestMove(b *testing.B) {
 	g.SetDice(3, 5)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		BestMove(g)
+		BestMove(g, 2)
 	}
 }
 

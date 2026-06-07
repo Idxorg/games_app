@@ -34,6 +34,7 @@ func NewGame() *Game {
 		}
 	}
 
+	g.ZobristHash = g.computeHash()
 	return g
 }
 
@@ -407,6 +408,23 @@ func (g *Game) MakeMove(move Move) error {
 	if !found {
 		return fmt.Errorf("illegal move from %s to %s", move.From, move.To)
 	}
+
+	// --- Incremental Zobrist hash update (before board modification) ---
+	// XOR out moving piece from source square
+	g.ZobristHash ^= zobristPiece[piece.Type-1][piece.Color][move.From.Row][move.From.Col]
+	// XOR out each captured piece
+	for _, cap := range move.Captured {
+		cp := g.Board[cap.Row][cap.Col]
+		g.ZobristHash ^= zobristPiece[cp.Type-1][cp.Color][cap.Row][cap.Col]
+	}
+	// XOR in the final piece at destination (handle promotion)
+	if move.Promoted {
+		g.ZobristHash ^= zobristPiece[King-1][piece.Color][move.To.Row][move.To.Col]
+	} else {
+		g.ZobristHash ^= zobristPiece[piece.Type-1][piece.Color][move.To.Row][move.To.Col]
+	}
+	// Toggle side-to-move key
+	g.ZobristHash ^= zobristSide
 
 	// Execute the move
 	g.Board[move.To.Row][move.To.Col] = piece

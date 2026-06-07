@@ -74,6 +74,7 @@ type Game struct {
 	Moves          []Move // history of moves played
 	KingMoveCount  int    // consecutive king moves without capture (for draw rule)
 	TotalKingMoves int    // total king moves (for draw rule)
+	ZobristHash    uint64 // incremental Zobrist hash for transposition table
 }
 
 // GameState represents the current state of the game.

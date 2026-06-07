@@ -574,7 +574,7 @@ func TestAI_RandomMove(t *testing.T) {
 
 func TestAI_BestMove_Depth1(t *testing.T) {
 	g := NewGame()
-	move := g.BestMove(1)
+	move := g.BestMove(1, 0)
 	if move.From == (Position{}) && move.To == (Position{}) {
 		t.Error("best move should not be empty from starting position")
 	}
@@ -594,7 +594,7 @@ func TestAI_BestMove_Depth1(t *testing.T) {
 
 func TestAI_BestMove_Depth2(t *testing.T) {
 	g := NewGame()
-	move := g.BestMove(2)
+	move := g.BestMove(2, 0)
 	if move.From == (Position{}) && move.To == (Position{}) {
 		t.Error("best move at depth 2 should not be empty")
 	}
@@ -607,7 +607,7 @@ func TestAI_BestMove_Captures(t *testing.T) {
 		t.Fatalf("failed to load FEN: %v", err)
 	}
 
-	move := g.BestMove(2)
+	move := g.BestMove(2, 0)
 	legal := g.AllLegalMoves()
 	found := false
 	for _, m := range legal {

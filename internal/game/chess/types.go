@@ -185,6 +185,7 @@ type Game struct {
 	BlackKingMoved   bool
 	WhiteRookMoved   [2]bool         // [0]=queenside (a1), [1]=kingside (h1)
 	BlackRookMoved   [2]bool         // [0]=queenside (a8), [1]=kingside (h8)
+	ZobristHash      uint64          // incremental Zobrist hash for transposition table
 }
 
 // FENData holds the components of a FEN string.
