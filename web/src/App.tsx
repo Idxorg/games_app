@@ -49,6 +49,7 @@ function AnimatedRoutes() {
             <Route path="/matches" element={<MatchHistory />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/game/:gameId" element={<Game />} />
+            <Route path="/game/:gameId/:matchId" element={<Game />} />
             <Route path="*" element={<NotFound />} />
           </Route>
         </Routes>
