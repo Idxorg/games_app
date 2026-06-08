@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Bell, Swords, X, Check, Loader2 } from 'lucide-react'
+import { Swords, X, Check, Loader2 } from 'lucide-react'
 import { useInviteStore } from '../../stores/inviteStore'
 import { useToastStore } from '../ui/Toast'
 import { isEmbedMode } from '../../embedHandoff'
+import { useNavigate } from 'react-router-dom'
 
 // ─── Game type labels ─────────────────────────────────────────────────────
 
@@ -22,6 +23,7 @@ const GAME_TYPE_LABELS: Record<string, string> = {
 export function InviteIncomingBanner() {
   const { pendingInvites, loading, accept, decline } = useInviteStore()
   const addToast = useToastStore((s) => s.addToast)
+  const navigate = useNavigate()
   const [actionInProgress, setActionInProgress] = useState<string | null>(null)
 
   // Auto-fetch on mount if authenticated
@@ -42,8 +44,10 @@ export function InviteIncomingBanner() {
   const handleAccept = async (id: string) => {
     setActionInProgress(id)
     try {
-      await accept(id)
+      const res = await accept(id)
       addToast('Приглашение принято', 'success')
+      // Navigate to the live match
+      navigate(`/game/${res.match.game_type}/${res.match.id}`)
       // Notify parent iframe
       if (isEmbedMode()) {
         window.parent.postMessage(
@@ -89,7 +93,7 @@ export function InviteIncomingBanner() {
         className="glass-card gold-border flex items-center gap-3 px-4 py-3 mx-auto mb-4"
         style={{ maxWidth: 600 }}
       >
-        <Bell size={18} color="var(--gold)" className="flex-shrink-0" />
+        <Swords size={18} color="var(--gold)" className="flex-shrink-0" />
 
         <div className="flex-1 min-w-0">
           <span className="text-sm font-medium truncate block">

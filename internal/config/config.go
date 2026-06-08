@@ -12,16 +12,22 @@ import (
 
 // Config holds all application configuration.
 type Config struct {
-	Server    ServerConfig    `yaml:"server"`
-	Database  DatabaseConfig  `yaml:"database"`
-	Redis     RedisConfig     `yaml:"redis"`
-	S3        S3Config        `yaml:"s3"`
-	PortalAPI PortalAPIConfig `yaml:"portal_api"`
-	JWT       JWTConfig       `yaml:"jwt"`
-	Embed     EmbedConfig     `yaml:"embed"`
-	LiveKit   LiveKitConfig   `yaml:"livekit"`
-	CORS      CORSConfig      `yaml:"cors"`
-	RateLimit RateLimitConfig `yaml:"rate_limit"`
+	Server       ServerConfig       `yaml:"server"`
+	Database     DatabaseConfig     `yaml:"database"`
+	Redis        RedisConfig        `yaml:"redis"`
+	S3           S3Config           `yaml:"s3"`
+	PortalAPI    PortalAPIConfig    `yaml:"portal_api"`
+	JWT          JWTConfig          `yaml:"jwt"`
+	Embed        EmbedConfig        `yaml:"embed"`
+	LiveKit      LiveKitConfig      `yaml:"livekit"`
+	CORS         CORSConfig         `yaml:"cors"`
+	RateLimit    RateLimitConfig    `yaml:"rate_limit"`
+	Notifications NotificationsConfig `yaml:"notifications"`
+}
+
+type NotificationsConfig struct {
+	URL   string `yaml:"url"`
+	Token string `yaml:"token"`
 }
 
 type RateLimitConfig struct {
@@ -156,6 +162,8 @@ func Load(path string) (*Config, error) {
 	})
 	overrideString("RATE_LIMIT_MAX_REQUESTS", func(v string) { cfg.RateLimit.MaxRequests = mustInt(v) })
 	overrideString("RATE_LIMIT_WINDOW_SECONDS", func(v string) { cfg.RateLimit.WindowSeconds = mustInt(v) })
+	overrideString("NOTIFICATIONS_API_URL", func(v string) { cfg.Notifications.URL = v })
+	overrideString("NOTIFICATIONS_INTERNAL_TOKEN", func(v string) { cfg.Notifications.Token = v })
 
 	// Backwards compat: PORT env var maps to SERVER_PORT (used in old main.go)
 	overrideString("PORT", func(v string) { cfg.Server.Port = mustInt(v) })

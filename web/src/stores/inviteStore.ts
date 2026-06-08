@@ -5,6 +5,7 @@ import {
   declineInvite,
   getPendingInvites,
   type Invite,
+  type AcceptInviteResponse,
 } from '../api/invites'
 import { useUserStore } from './userStore'
 
@@ -19,7 +20,7 @@ interface InviteState {
 
 interface InviteActions {
   fetchPending: () => Promise<void>
-  accept: (id: string) => Promise<void>
+  accept: (id: string) => Promise<AcceptInviteResponse>
   decline: (id: string) => Promise<void>
   create: (gameType: string, recipientSid: string) => Promise<void>
   clearError: () => void
@@ -56,8 +57,9 @@ export const useInviteStore = create<InviteStore>((set, get) => ({
 
   accept: async (id: string) => {
     try {
-      await acceptInvite(id)
+      const res = await acceptInvite(id)
       await get().fetchPending()
+      return res
     } catch (err) {
       set({
         error: err instanceof Error ? err.message : 'Failed to accept invite',

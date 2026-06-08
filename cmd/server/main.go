@@ -112,6 +112,7 @@ func main() {
 
 	inviteHandler := handler.NewInviteHandler(inviteRepo, matchRepo)
 	inviteHandler.SetUserRepo(userRepo)
+	inviteHandler.SetNotificationsClient(service.NewNotificationsClient(cfg.Notifications.URL, cfg.Notifications.Token))
 
 	ratingHandler := handler.NewRatingHandler(ratingRepo, ratingSvc, userRepo)
 

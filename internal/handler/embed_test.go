@@ -168,3 +168,75 @@ func TestEmbedHandler_SetUserRepo(t *testing.T) {
 		t.Error("userRepo should not be nil after SetUserRepo")
 	}
 }
+
+func TestEmbedAuth_WithUserRepo(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	secret := "test-secret"
+	jwtSecret := "test-jwt-secret-32charslong!!!!!!"
+	h := NewEmbedHandler(secret, jwtSecret, 24)
+
+	userRepo := mocks.NewMockUserRepo()
+	userRepo.Create(nil, "emp_100", "bob@example.com", "Bob", "", "Engineering", "", "")
+	h.SetUserRepo(userRepo)
+
+	r := gin.New()
+	r.POST("/embed", h.EmbedAuth)
+
+	body, _ := json.Marshal(embedRequest{
+		SID:        "emp_100",
+		Email:      "bob@example.com",
+		Name:       "Bob Updated",
+		Department: "Marketing",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/embed", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Erlink-Embed-Secret", secret)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", w.Code, w.Body.String())
+	}
+
+	var resp embedResponse
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp.Token == "" {
+		t.Fatal("expected non-empty token")
+	}
+}
+
+func TestEmbedAuth_WithUserRepo_NewUser(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	secret := "test-secret"
+	jwtSecret := "test-jwt-secret-32charslong!!!!!!"
+	h := NewEmbedHandler(secret, jwtSecret, 24)
+
+	userRepo := mocks.NewMockUserRepo()
+	// Don't create any user — this user doesn't exist yet
+	h.SetUserRepo(userRepo)
+
+	r := gin.New()
+	r.POST("/embed", h.EmbedAuth)
+
+	body, _ := json.Marshal(embedRequest{
+		SID:        "emp_new",
+		Email:      "new@example.com",
+		Name:       "New User",
+		Department: "Sales",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/embed", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Erlink-Embed-Secret", secret)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", w.Code, w.Body.String())
+	}
+
+	var resp embedResponse
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp.Token == "" {
+		t.Fatal("expected non-empty token")
+	}
+}

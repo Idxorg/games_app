@@ -70,10 +70,10 @@ function InviteHandler() {
       const invite = store.pendingInvites.find((i) => i.id === inviteId)
       const gameType = invite?.game_type || 'chess'
       try {
-        await store.accept(inviteId)
-        // Navigate to the game lobby after accept; once a matchId is available
-        // the Game component will auto-connect via WebSocket
-        navigate(`/game/${gameType}`)
+        const res = await store.accept(inviteId)
+        // Navigate to the live match — Game component will auto-connect WS
+        const matchId = res.match.id
+        navigate(`/game/${gameType}/${matchId}`)
       } catch (err) {
         console.error('Failed to accept invite:', err)
       }

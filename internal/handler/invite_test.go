@@ -504,3 +504,26 @@ func TestDeclineInvite_WithNotification(t *testing.T) {
 		t.Errorf("expected game.invite.declined, got %v", pub.Events[0]["type"])
 	}
 }
+
+func TestDeclineInvite_Expired(t *testing.T) {
+	inviteRepo := mocks.NewMockInviteRepo()
+	matchRepo := mocks.NewMockMatchRepo()
+	ih := NewInviteHandler(inviteRepo, matchRepo)
+
+	invite := &model.GameInvite{
+		GameType: "checkers", InviterSID: "emp_111", RecipientSID: "emp_222",
+		Status: "pending", ExpiresAt: time.Now().Add(-1 * time.Minute),
+	}
+	inviteRepo.Create(nil, invite)
+
+	router := setupInviteTestRouter(ih, "emp_222")
+	req, _ := http.NewRequest("POST", "/invite/"+invite.ID+"/decline", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	// DeclineInvite doesn't check expiry, so it will decline successfully (200)
+	// even for expired invites — the status is still "pending" in the repo
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200 (decline ignores expiry), got %d", w.Code)
+	}
+}

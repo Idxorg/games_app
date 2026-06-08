@@ -408,3 +408,35 @@ func TestGetLeaderboard_InvalidLimit(t *testing.T) {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
 }
+
+func TestGetUserRating_Found(t *testing.T) {
+	matchRepo := mocks.NewMockMatchRepo()
+	ratingRepo := mocks.NewMockRatingRepo()
+	ratingSvc := service.NewRatingService(ratingRepo, matchRepo, nil)
+	gh := NewGameHandler(matchRepo, ratingSvc)
+	router := setupGameTestRouter(gh)
+
+	// Pre-populate a rating for the current user (emp_12345 set by middleware)
+	ratingRepo.Upsert(context.Background(), &model.PlayerRating{
+		SID:      "emp_12345",
+		GameType: "chess",
+		ELO:      1650,
+	})
+
+	req, _ := http.NewRequest("GET", "/ratings/chess/me", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", w.Code, w.Body.String())
+	}
+
+	var resp model.PlayerRating
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp.ELO != 1650 {
+		t.Errorf("expected ELO 1650, got %d", resp.ELO)
+	}
+	if resp.SID != "emp_12345" {
+		t.Errorf("expected SID emp_12345, got %s", resp.SID)
+	}
+}

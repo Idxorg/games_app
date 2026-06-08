@@ -28,6 +28,18 @@ interface InviteActionResponse {
   invite_id: string
 }
 
+export interface AcceptInviteResponse {
+  message: string
+  invite: Invite & { match_id?: string }
+  match: {
+    id: string
+    game_type: string
+    player1_sid: string
+    player2_sid: string
+    status: string
+  }
+}
+
 // ─── API functions ──────────────────────────────────────────────────────────
 
 export async function createInvite(
@@ -41,8 +53,8 @@ export async function createInvite(
   return res.invite
 }
 
-export async function acceptInvite(id: string): Promise<InviteActionResponse> {
-  return post<InviteActionResponse>(`/games/invite/${id}/accept`)
+export async function acceptInvite(id: string): Promise<AcceptInviteResponse> {
+  return post<AcceptInviteResponse>(`/games/invite/${id}/accept`)
 }
 
 export async function declineInvite(id: string): Promise<InviteActionResponse> {
