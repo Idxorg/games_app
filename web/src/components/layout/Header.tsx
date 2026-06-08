@@ -66,7 +66,7 @@ export function Header() {
         <Link to="/" className="flex items-center gap-3 no-underline">
           <Gamepad2 size={28} color="var(--gold)" />
           <span className="text-lg font-bold text-accent">
-            Game Portal
+            Игры · ЭР-Линк
           </span>
         </Link>
 

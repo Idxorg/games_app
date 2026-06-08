@@ -231,7 +231,7 @@ func (s *RatingService) GetUserRatings(ctx context.Context, sid string) ([]model
 	ratings := make([]model.PlayerRating, 0)
 	for gt := range validGameTypes {
 		r, err := s.ratingRepo.Get(ctx, sid, gt)
-		if err != nil {
+		if err != nil || r == nil {
 			continue // player may not have played this game type
 		}
 		ratings = append(ratings, *r)

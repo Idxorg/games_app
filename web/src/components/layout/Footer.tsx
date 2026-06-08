@@ -10,7 +10,7 @@ export function Footer() {
           <div>
             <div className="flex items-center gap-2 mb-3">
               <Gamepad2 size={20} color="var(--gold)" />
-              <span className="font-bold text-accent">Game Portal</span>
+              <span className="font-bold text-accent">ЭР-Линк</span>
             </div>
             <p className="text-sm text-muted">
               Корпоративная игровая платформа для отдыха и соревнований
@@ -45,7 +45,7 @@ export function Footer() {
         </div>
 
         <div className="mt-8 pt-4 text-center text-xs text-muted" style={{ borderTop: '1px solid var(--bg-glass-border)' }}>
-          Game Portal &mdash; Корпоративная игровая платформа &mdash; 2026
+          ЭР-Линк — Корпоративная игровая платформа — 2026
         </div>
       </div>
     </footer>

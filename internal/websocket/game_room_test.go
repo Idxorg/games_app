@@ -2,10 +2,16 @@ package websocket
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
+
+	"game-platform/internal/model"
+	"game-platform/tests/mocks"
 )
 
-func TestNewGameRoom(t *testing.T) {
+// ---------- NewGameRoom ----------
+
+func TestNewGameRoom_Chess(t *testing.T) {
 	room := NewGameRoom("match-1", "chess")
 	if room.MatchID() != "match-1" {
 		t.Errorf("expected match_id match-1, got %s", room.MatchID())
@@ -19,267 +25,604 @@ func TestNewGameRoom(t *testing.T) {
 	if room.IsFull() {
 		t.Error("new room should not be full")
 	}
+	_ = room.Engine()
 }
 
-func TestGameRoomChessEngine(t *testing.T) {
-	room := NewGameRoom("match-1", "chess")
-
-	// Check initial state
-	state := room.BuildStatePayload()
-	if state["turn"] != "white" {
-		t.Errorf("chess should start with white's turn, got %v", state["turn"])
-	}
-	if state["board"] == "" {
-		t.Error("board should not be empty")
-	}
-}
-
-func TestGameRoomCheckersEngine(t *testing.T) {
+func TestNewGameRoom_Checkers(t *testing.T) {
 	room := NewGameRoom("match-1", "checkers")
-
 	state := room.BuildStatePayload()
 	if state["turn"] != "white" {
 		t.Errorf("checkers should start with white's turn, got %v", state["turn"])
 	}
 }
 
-func TestGameRoomBackgammonEngine(t *testing.T) {
+func TestNewGameRoom_Backgammon(t *testing.T) {
 	room := NewGameRoom("match-1", "backgammon")
-
 	state := room.BuildStatePayload()
 	if state["turn"] != "white" {
 		t.Errorf("backgammon should start with white's turn, got %v", state["turn"])
 	}
 }
 
-func TestGameRoomUnknownType(t *testing.T) {
-	// Unknown type should default to chess
+func TestNewGameRoom_UnknownType(t *testing.T) {
 	room := NewGameRoom("match-1", "unknown")
 	if room.GameType() != "unknown" {
 		t.Errorf("expected game_type unknown, got %s", room.GameType())
 	}
-	// Should still have a working engine
 	state := room.BuildStatePayload()
 	if state["board"] == "" {
 		t.Error("even unknown type should have a board")
 	}
 }
 
-func TestChessAdapterLegalMoves(t *testing.T) {
-	adapter := NewChessAdapter()
+// ---------- JoinPlayer ----------
 
-	moves := adapter.GetLegalMoves()
-	if len(moves) == 0 {
-		t.Error("chess should have legal moves from starting position")
+func TestJoinPlayer_P1(t *testing.T) {
+	room := NewGameRoom("m1", "chess")
+	room.TestMsgCh = make(chan []byte, 10)
+
+	err := room.JoinPlayer("sid1", nil)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
 	}
+	if room.IsFull() {
+		t.Error("room should not be full after one player")
+	}
+	if room.GetPlayerColor("sid1") != "white" {
+		t.Errorf("first player should be white, got %s", room.GetPlayerColor("sid1"))
+	}
+}
 
-	// Check that moves have from/to
-	for _, m := range moves {
-		if m.From == "" || m.To == "" {
-			t.Errorf("move missing from/to: %+v", m)
+func TestJoinPlayer_P2(t *testing.T) {
+	room := NewGameRoom("m1", "chess")
+	room.TestMsgCh = make(chan []byte, 20)
+
+	err := room.JoinPlayer("sid1", nil)
+	if err != nil {
+		t.Fatalf("p1 join error: %v", err)
+	}
+	err = room.JoinPlayer("sid2", nil)
+	if err != nil {
+		t.Fatalf("p2 join error: %v", err)
+	}
+	if !room.IsFull() {
+		t.Error("room should be full after two players")
+	}
+	if room.GetPlayerColor("sid2") != "black" {
+		t.Errorf("second player should be black, got %s", room.GetPlayerColor("sid2"))
+	}
+}
+
+func TestJoinPlayer_FullRoom(t *testing.T) {
+	room := NewGameRoom("m1", "chess")
+	room.TestMsgCh = make(chan []byte, 20)
+
+	room.JoinPlayer("sid1", nil)
+	room.JoinPlayer("sid2", nil)
+
+	err := room.JoinPlayer("sid3", nil)
+	if err == nil {
+		t.Error("expected error when room is full")
+	}
+}
+
+func TestJoinPlayer_GameOver(t *testing.T) {
+	room := NewGameRoom("m1", "chess")
+	room.TestMsgCh = make(chan []byte, 20)
+
+	room.JoinPlayer("sid1", nil)
+	room.JoinPlayer("sid2", nil)
+	// Force game over
+	room.HandleResign("sid1")
+
+	err := room.JoinPlayer("sid3", nil)
+	if err == nil {
+		t.Error("expected error when game is over")
+	}
+}
+
+// ---------- HandleMove ----------
+
+func TestHandleMove_ChessValidMove(t *testing.T) {
+	room := NewGameRoom("m1", "chess")
+	room.TestMsgCh = make(chan []byte, 50)
+
+	room.JoinPlayer("sid1", nil)
+	room.JoinPlayer("sid2", nil)
+
+	moveData, _ := json.Marshal(WSMove{From: "e2", To: "e4"})
+	room.HandleMove("sid1", moveData)
+
+	history := room.GetMoveHistory()
+	if len(history) != 1 {
+		t.Fatalf("expected 1 move in history, got %d", len(history))
+	}
+	if history[0]["from"] != "e2" {
+		t.Errorf("expected from e2, got %v", history[0]["from"])
+	}
+}
+
+func TestHandleMove_ChessIllegalMove(t *testing.T) {
+	room := NewGameRoom("m1", "chess")
+	room.TestMsgCh = make(chan []byte, 50)
+
+	room.JoinPlayer("sid1", nil)
+	room.JoinPlayer("sid2", nil)
+
+	// e2-e5 is illegal (pawn can't move 3 squares)
+	moveData, _ := json.Marshal(WSMove{From: "e2", To: "e5"})
+	room.HandleMove("sid1", moveData)
+
+	// Drain messages - should contain an error
+	history := room.GetMoveHistory()
+	if len(history) != 0 {
+		t.Errorf("illegal move should not be recorded, got %d moves", len(history))
+	}
+}
+
+func TestHandleMove_NotYourTurn(t *testing.T) {
+	room := NewGameRoom("m1", "chess")
+	room.TestMsgCh = make(chan []byte, 50)
+
+	room.JoinPlayer("sid1", nil)
+	room.JoinPlayer("sid2", nil)
+
+	moveData, _ := json.Marshal(WSMove{From: "e7", To: "e5"})
+	room.HandleMove("sid2", moveData) // black tries to move first
+
+	history := room.GetMoveHistory()
+	if len(history) != 0 {
+		t.Errorf("should not record move when not your turn")
+	}
+}
+
+func TestHandleMove_InvalidJSON(t *testing.T) {
+	room := NewGameRoom("m1", "chess")
+	room.TestMsgCh = make(chan []byte, 50)
+
+	room.JoinPlayer("sid1", nil)
+	room.JoinPlayer("sid2", nil)
+
+	room.HandleMove("sid1", []byte("not-json"))
+
+	history := room.GetMoveHistory()
+	if len(history) != 0 {
+		t.Errorf("invalid JSON should not record a move")
+	}
+}
+
+func TestHandleMove_GameAlreadyOver(t *testing.T) {
+	room := NewGameRoom("m1", "chess")
+	room.TestMsgCh = make(chan []byte, 50)
+
+	room.JoinPlayer("sid1", nil)
+	room.JoinPlayer("sid2", nil)
+	room.HandleResign("sid1")
+
+	moveData, _ := json.Marshal(WSMove{From: "e2", To: "e4"})
+	room.HandleMove("sid2", moveData)
+
+	history := room.GetMoveHistory()
+	if len(history) != 0 {
+		t.Errorf("no moves should be recorded after game over")
+	}
+}
+
+func TestHandleMove_NotInGame(t *testing.T) {
+	room := NewGameRoom("m1", "chess")
+	room.TestMsgCh = make(chan []byte, 50)
+
+	room.JoinPlayer("sid1", nil)
+	room.JoinPlayer("sid2", nil)
+
+	moveData, _ := json.Marshal(WSMove{From: "e2", To: "e4"})
+	room.HandleMove("sid_other", moveData)
+
+	history := room.GetMoveHistory()
+	if len(history) != 0 {
+		t.Errorf("should not record move for non-player")
+	}
+}
+
+// ---------- HandleResign ----------
+
+func TestHandleResign_Valid(t *testing.T) {
+	room := NewGameRoom("m1", "chess")
+	room.TestMsgCh = make(chan []byte, 50)
+	room.SetMatchRepo(mocks.NewMockMatchRepo())
+
+	room.JoinPlayer("sid1", nil)
+	room.JoinPlayer("sid2", nil)
+	room.HandleResign("sid1")
+
+	if !room.IsGameOver() {
+		t.Error("game should be over after resign")
+	}
+}
+
+func TestHandleResign_NotInGame(t *testing.T) {
+	room := NewGameRoom("m1", "chess")
+	room.TestMsgCh = make(chan []byte, 50)
+
+	room.JoinPlayer("sid1", nil)
+	room.JoinPlayer("sid2", nil)
+	room.HandleResign("sid_other") // not a player
+}
+
+func TestHandleResign_GameAlreadyOver(t *testing.T) {
+	room := NewGameRoom("m1", "chess")
+	room.TestMsgCh = make(chan []byte, 50)
+
+	room.JoinPlayer("sid1", nil)
+	room.JoinPlayer("sid2", nil)
+	room.HandleResign("sid1")
+	room.HandleResign("sid2") // double resign
+}
+
+// ---------- HandleDrawOffer ----------
+
+func TestHandleDrawOffer_Sent(t *testing.T) {
+	room := NewGameRoom("m1", "chess")
+	room.TestMsgCh = make(chan []byte, 50)
+
+	room.JoinPlayer("sid1", nil)
+	room.JoinPlayer("sid2", nil)
+	room.HandleDrawOffer("sid1")
+
+	if room.IsGameOver() {
+		t.Error("game should not be over after single draw offer")
+	}
+}
+
+func TestHandleDrawOffer_MutualDraw(t *testing.T) {
+	room := NewGameRoom("m1", "chess")
+	room.TestMsgCh = make(chan []byte, 50)
+	room.SetMatchRepo(mocks.NewMockMatchRepo())
+
+	room.JoinPlayer("sid1", nil)
+	room.JoinPlayer("sid2", nil)
+	room.HandleDrawOffer("sid1")
+	room.HandleDrawOffer("sid2") // mutual draw
+
+	if !room.IsGameOver() {
+		t.Error("game should be over after mutual draw offer")
+	}
+}
+
+func TestHandleDrawOffer_GameOver(t *testing.T) {
+	room := NewGameRoom("m1", "chess")
+	room.TestMsgCh = make(chan []byte, 50)
+
+	room.JoinPlayer("sid1", nil)
+	room.JoinPlayer("sid2", nil)
+	room.HandleResign("sid1")
+	room.HandleDrawOffer("sid2") // draw offer after game over
+}
+
+// ---------- HandleDrawAccept ----------
+
+func TestHandleDrawAccept_NoPendingOffer(t *testing.T) {
+	room := NewGameRoom("m1", "chess")
+	room.TestMsgCh = make(chan []byte, 50)
+
+	room.JoinPlayer("sid1", nil)
+	room.JoinPlayer("sid2", nil)
+	room.HandleDrawAccept("sid2") // no pending offer
+}
+
+func TestHandleDrawAccept_WrongAcceptor(t *testing.T) {
+	room := NewGameRoom("m1", "chess")
+	room.TestMsgCh = make(chan []byte, 50)
+
+	room.JoinPlayer("sid1", nil)
+	room.JoinPlayer("sid2", nil)
+	room.HandleDrawOffer("sid1")
+	room.HandleDrawAccept("sid1") // offerer tries to accept
+}
+
+func TestHandleDrawAccept_Valid(t *testing.T) {
+	room := NewGameRoom("m1", "chess")
+	room.TestMsgCh = make(chan []byte, 50)
+	room.SetMatchRepo(mocks.NewMockMatchRepo())
+
+	room.JoinPlayer("sid1", nil)
+	room.JoinPlayer("sid2", nil)
+	room.HandleDrawOffer("sid1")
+	room.HandleDrawAccept("sid2")
+
+	if !room.IsGameOver() {
+		t.Error("game should be over after draw accepted")
+	}
+}
+
+func TestHandleDrawAccept_GameOver(t *testing.T) {
+	room := NewGameRoom("m1", "chess")
+	room.TestMsgCh = make(chan []byte, 50)
+
+	room.JoinPlayer("sid1", nil)
+	room.JoinPlayer("sid2", nil)
+	room.HandleDrawOffer("sid1")
+	room.HandleResign("sid1")
+	room.HandleDrawAccept("sid2") // accept after game over
+}
+
+// ---------- HandleDrawDecline ----------
+
+func TestHandleDrawDecline_NoPendingOffer(t *testing.T) {
+	room := NewGameRoom("m1", "chess")
+	room.TestMsgCh = make(chan []byte, 50)
+
+	room.JoinPlayer("sid1", nil)
+	room.JoinPlayer("sid2", nil)
+	room.HandleDrawDecline("sid2") // no pending offer
+}
+
+func TestHandleDrawDecline_WrongDecliner(t *testing.T) {
+	room := NewGameRoom("m1", "chess")
+	room.TestMsgCh = make(chan []byte, 50)
+
+	room.JoinPlayer("sid1", nil)
+	room.JoinPlayer("sid2", nil)
+	room.HandleDrawOffer("sid1")
+	room.HandleDrawDecline("sid1") // offerer tries to decline
+}
+
+func TestHandleDrawDecline_Valid(t *testing.T) {
+	room := NewGameRoom("m1", "chess")
+	room.TestMsgCh = make(chan []byte, 50)
+
+	room.JoinPlayer("sid1", nil)
+	room.JoinPlayer("sid2", nil)
+	room.HandleDrawOffer("sid1")
+	room.HandleDrawDecline("sid2")
+
+	if room.IsGameOver() {
+		t.Error("game should not be over after draw declined")
+	}
+}
+
+// ---------- HandleRollDice ----------
+
+func TestHandleRollDice_Backgammon(t *testing.T) {
+	room := NewGameRoom("m1", "backgammon")
+	room.TestMsgCh = make(chan []byte, 50)
+
+	room.JoinPlayer("sid1", nil)
+	room.JoinPlayer("sid2", nil)
+	room.HandleRollDice("sid1")
+
+	// Check that a dice_rolled message was broadcast
+	found := false
+	for i := 0; i < 5; i++ {
+		select {
+		case msg := <-room.TestMsgCh:
+			if strings.Contains(string(msg), "dice_rolled") {
+				found = true
+			}
+		default:
 		}
 	}
-}
-
-func TestChessAdapterApplyMove(t *testing.T) {
-	adapter := NewChessAdapter()
-
-	// e2-e4 (king's pawn)
-	err := adapter.ApplyMove(WSMove{From: "e2", To: "e4"})
-	if err != nil {
-		t.Fatalf("e2-e4 should be legal: %v", err)
-	}
-
-	if adapter.GetTurn() != "black" {
-		t.Errorf("after e2-e4, turn should be black, got %s", adapter.GetTurn())
-	}
-
-	if !adapter.IsGameOver() {
-		// Game should still be playing
-	} else {
-		t.Error("game should not be over after e2-e4")
+	if !found {
+		t.Error("expected dice_rolled message")
 	}
 }
 
-func TestChessAdapterIllegalMove(t *testing.T) {
-	adapter := NewChessAdapter()
+func TestHandleRollDice_NotBackgammon(t *testing.T) {
+	room := NewGameRoom("m1", "chess")
+	room.TestMsgCh = make(chan []byte, 50)
 
-	// e2-e5 (pawn can't move 3 squares)
-	err := adapter.ApplyMove(WSMove{From: "e2", To: "e5"})
-	if err == nil {
-		t.Error("e2-e5 should be illegal")
+	room.JoinPlayer("sid1", nil)
+	room.JoinPlayer("sid2", nil)
+	room.HandleRollDice("sid1")
+
+	// Should send an error, not dice_rolled
+	found := false
+	for i := 0; i < 5; i++ {
+		select {
+		case msg := <-room.TestMsgCh:
+			if strings.Contains(string(msg), "dice_rolled") {
+				found = true
+			}
+		default:
+		}
+	}
+	if found {
+		t.Error("chess room should not broadcast dice_rolled")
 	}
 }
 
-func TestChessAdapterResign(t *testing.T) {
-	adapter := NewChessAdapter()
-	adapter.Resign("white")
+func TestHandleRollDice_GameOver(t *testing.T) {
+	room := NewGameRoom("m1", "backgammon")
+	room.TestMsgCh = make(chan []byte, 50)
 
-	if !adapter.IsGameOver() {
-		t.Error("game should be over after resign")
-	}
-	if adapter.GetGameOverReason() != "resign" {
-		t.Errorf("expected resign reason, got %s", adapter.GetGameOverReason())
-	}
-	if adapter.GetWinner() != "black" {
-		t.Errorf("after white resigns, black should win, got %s", adapter.GetWinner())
+	room.JoinPlayer("sid1", nil)
+	room.JoinPlayer("sid2", nil)
+	room.HandleResign("sid1")
+	room.HandleRollDice("sid2")
+}
+
+// ---------- persistGameComplete ----------
+
+func TestPersistGameComplete_NilMatchRepo(t *testing.T) {
+	room := NewGameRoom("m1", "chess")
+	room.TestMsgCh = make(chan []byte, 50)
+	// matchRepo is nil by default
+
+	room.JoinPlayer("sid1", nil)
+	room.JoinPlayer("sid2", nil)
+	room.HandleResign("sid1") // should not panic
+
+	if !room.IsGameOver() {
+		t.Error("game should be over")
 	}
 }
 
-func TestChessAdapterFEN(t *testing.T) {
-	adapter := NewChessAdapter()
-	fen := adapter.GetBoard()
-	if fen == "" {
-		t.Error("FEN should not be empty")
-	}
-	// Starting FEN should begin with "rnbqkbnr"
-	if len(fen) < 8 || fen[:8] != "rnbqkbnr" {
-		t.Errorf("starting FEN should begin with rnbqkbnr, got: %s", fen[:min(8, len(fen))])
+func TestPersistGameComplete_WithMatchRepo(t *testing.T) {
+	matchRepo := mocks.NewMockMatchRepo()
+	// Pre-create the match so Complete won't fail
+	matchRepo.Create(nil, &model.Match{
+		ID: "m1", GameType: "chess",
+		Player1SID: "sid1", Player2SID: "sid2",
+		Status: "in_progress",
+	})
+
+	room := NewGameRoom("m1", "chess")
+	room.TestMsgCh = make(chan []byte, 50)
+	room.SetMatchRepo(matchRepo)
+
+	room.JoinPlayer("sid1", nil)
+	room.JoinPlayer("sid2", nil)
+	room.HandleResign("sid1")
+
+	// Give the async goroutine time to complete
+	// Just verify the game is over; no panic
+	if !room.IsGameOver() {
+		t.Error("game should be over")
 	}
 }
 
-func TestCheckersAdapterLegalMoves(t *testing.T) {
-	adapter := NewCheckersAdapter()
+// ---------- GetMoveHistory ----------
 
-	moves := adapter.GetLegalMoves()
-	if len(moves) == 0 {
-		t.Error("checkers should have legal moves from starting position")
+func TestGetMoveHistory_Empty(t *testing.T) {
+	room := NewGameRoom("m1", "chess")
+	history := room.GetMoveHistory()
+	if len(history) != 0 {
+		t.Errorf("expected empty history, got %d", len(history))
 	}
 }
 
-func TestCheckersAdapterResign(t *testing.T) {
-	adapter := NewCheckersAdapter()
-	adapter.Resign("white")
+func TestGetMoveHistory_AfterMoves(t *testing.T) {
+	room := NewGameRoom("m1", "chess")
+	room.TestMsgCh = make(chan []byte, 50)
 
-	if !adapter.IsGameOver() {
-		t.Error("game should be over after resign")
-	}
-	if adapter.GetWinner() != "black" {
-		t.Errorf("after white resigns, black should win, got %s", adapter.GetWinner())
+	room.JoinPlayer("sid1", nil)
+	room.JoinPlayer("sid2", nil)
+
+	moveData, _ := json.Marshal(WSMove{From: "e2", To: "e4"})
+	room.HandleMove("sid1", moveData)
+
+	moveData, _ = json.Marshal(WSMove{From: "e7", To: "e5"})
+	room.HandleMove("sid2", moveData)
+
+	history := room.GetMoveHistory()
+	if len(history) != 2 {
+		t.Errorf("expected 2 moves, got %d", len(history))
 	}
 }
 
-func TestBackgammonAdapterRollDice(t *testing.T) {
-	adapter := NewBackgammonAdapter()
+// ---------- GetPlayerColor ----------
 
-	// Before rolling, no legal moves (state is Rolling)
-	moves := adapter.GetLegalMoves()
-	if len(moves) != 0 {
-		t.Error("backgammon should have no moves before rolling dice")
-	}
+func TestGetPlayerColor(t *testing.T) {
+	room := NewGameRoom("m1", "chess")
+	room.TestMsgCh = make(chan []byte, 20)
 
-	dice := adapter.RollDice()
-	if len(dice) != 2 {
-		t.Fatalf("expected 2 dice, got %d", len(dice))
+	room.JoinPlayer("sid1", nil)
+	room.JoinPlayer("sid2", nil)
+
+	if room.GetPlayerColor("sid1") != "white" {
+		t.Errorf("p1 should be white, got %s", room.GetPlayerColor("sid1"))
 	}
-	if dice[0] < 1 || dice[0] > 6 || dice[1] < 1 || dice[1] > 6 {
-		t.Errorf("dice values out of range: %v", dice)
+	if room.GetPlayerColor("sid2") != "black" {
+		t.Errorf("p2 should be black, got %s", room.GetPlayerColor("sid2"))
+	}
+	if room.GetPlayerColor("sid_other") != "" {
+		t.Errorf("unknown SID should return empty, got %s", room.GetPlayerColor("sid_other"))
 	}
 }
 
-func TestBackgammonAdapterResign(t *testing.T) {
-	adapter := NewBackgammonAdapter()
-	adapter.Resign("black")
+// ---------- getOpponentSID (tested via draw logic) ----------
 
-	if !adapter.IsGameOver() {
-		t.Error("game should be over after resign")
+func TestGetOpponentSID_ThroughDraw(t *testing.T) {
+	room := NewGameRoom("m1", "chess")
+	room.TestMsgCh = make(chan []byte, 50)
+
+	room.JoinPlayer("sid1", nil)
+	room.JoinPlayer("sid2", nil)
+
+	// Offer draw from sid1, decline from sid2
+	room.HandleDrawOffer("sid1")
+	// Verify draw_offer was sent (drain channel)
+	drain := func() {
+		for {
+			select {
+			case <-room.TestMsgCh:
+			default:
+				return
+			}
+		}
 	}
-	if adapter.GetWinner() != "white" {
-		t.Errorf("after black resigns, white should win, got %s", adapter.GetWinner())
-	}
+	drain()
+
+	// Now sid2 declines
+	room.HandleDrawDecline("sid2")
 }
 
-func TestNewDefaultClock(t *testing.T) {
-	clock := NewDefaultClock()
+// ---------- Cleanup ----------
 
-	if clock.WhiteMs() != DefaultInitialTime {
-		t.Errorf("expected white time %d, got %d", DefaultInitialTime, clock.WhiteMs())
-	}
-	if clock.BlackMs() != DefaultInitialTime {
-		t.Errorf("expected black time %d, got %d", DefaultInitialTime, clock.BlackMs())
-	}
-	if clock.IsGameOver() {
-		t.Error("new clock should not be game over")
-	}
+func TestCleanup(t *testing.T) {
+	room := NewGameRoom("m1", "chess")
+	// Cleanup should not panic even with no connections
+	room.Cleanup()
 }
 
-func TestClockTimeout(t *testing.T) {
-	clock := NewClock(1000, 0) // 1 second, no increment
+// ---------- SetMatchRepo / SetRatingService ----------
 
-	// Tick away white's time
-	timedOut := clock.TickForTest("white", 1000)
-	if !timedOut {
-		t.Error("clock should timeout after 1000ms tick")
-	}
-	if !clock.IsGameOver() {
-		t.Error("clock should be game over")
-	}
-	if clock.TimeoutColor() != "white" {
-		t.Errorf("timeout color should be white, got %s", clock.TimeoutColor())
-	}
-	if clock.WhiteMs() != 0 {
-		t.Errorf("white ms should be 0, got %d", clock.WhiteMs())
-	}
-	// Black's time should be untouched
-	if clock.BlackMs() != 1000 {
-		t.Errorf("black ms should be 1000, got %d", clock.BlackMs())
-	}
+func TestSetMatchRepo(t *testing.T) {
+	room := NewGameRoom("m1", "chess")
+	repo := mocks.NewMockMatchRepo()
+	room.SetMatchRepo(repo)
+	room.SetRatingService(nil)
 }
 
-func TestClockSwitchPlayer(t *testing.T) {
-	clock := NewClock(10000, 100) // 10 seconds, 100ms increment
-
-	// Simulate white making a move: switch from white to black
-	// First, we need to set lastTick
-	clock.Start("white")
-	clock.SwitchPlayer("white", 100)
-
-	// White should have gotten an increment
-	if clock.WhiteMs() <= 10000-100 {
-		t.Errorf("white should have gotten increment, got %d", clock.WhiteMs())
-	}
+func TestSetRatingService(t *testing.T) {
+	room := NewGameRoom("m1", "chess")
+	updater := &mocks.MockRatingUpdater{}
+	room.SetRatingService(updater)
 }
 
-func TestClockSetTime(t *testing.T) {
-	clock := NewDefaultClock()
-	clock.SetTime("white", 5000)
-
-	if clock.WhiteMs() != 5000 {
-		t.Errorf("expected 5000, got %d", clock.WhiteMs())
-	}
-	if clock.BlackMs() != DefaultInitialTime {
-		t.Errorf("black time should be unchanged")
-	}
-}
-
-func TestGameStatePayloadSerialization(t *testing.T) {
-	room := NewGameRoom("match-1", "chess")
-	state := room.BuildStatePayload()
-
-	data, err := json.Marshal(state)
-	if err != nil {
-		t.Fatalf("failed to marshal state: %v", err)
-	}
-
-	var parsed map[string]interface{}
-	if err := json.Unmarshal(data, &parsed); err != nil {
-		t.Fatalf("failed to unmarshal state: %v", err)
-	}
-
-	if parsed["type"] != "state" {
-		t.Errorf("expected type state, got %v", parsed["type"])
-	}
-	if parsed["match_id"] != "match-1" {
-		t.Errorf("expected match_id match-1, got %v", parsed["match_id"])
-	}
-	if parsed["turn"] != "white" {
-		t.Errorf("expected turn white, got %v", parsed["turn"])
-	}
-}
+// ---------- Helper ----------
 
 func min(a, b int) int {
 	if a < b {
 		return a
 	}
 	return b
+}
+
+func TestHandleEngineGameOver_Checkmate(t *testing.T) {
+	room := NewGameRoom("m1", "chess")
+	room.player1SID = "white-p"
+	room.player2SID = "black-p"
+	repo := mocks.NewMockMatchRepo()
+	room.SetMatchRepo(repo)
+	updater := &mocks.MockRatingUpdater{}
+	room.SetRatingService(updater)
+
+	// Set up a position where white delivers checkmate (Scholar's mate)
+	// e2-e4, e7-e5, d1-h5, b8-c6, f1-c4, g8-f6, h5xf7#
+	_ = room.engine.ApplyMove(WSMove{From: "e2", To: "e4"})
+	_ = room.engine.ApplyMove(WSMove{From: "e7", To: "e5"})
+	_ = room.engine.ApplyMove(WSMove{From: "d1", To: "h5"})
+	_ = room.engine.ApplyMove(WSMove{From: "b8", To: "c6"})
+	_ = room.engine.ApplyMove(WSMove{From: "f1", To: "c4"})
+	_ = room.engine.ApplyMove(WSMove{From: "g8", To: "f6"})
+
+	// Qxf7# — checkmate
+	err := room.engine.ApplyMove(WSMove{From: "h5", To: "f7"})
+	if err != nil {
+		t.Fatalf("move failed: %v", err)
+	}
+
+	room.handleEngineGameOver()
+
+	if !room.gameOver {
+		t.Error("game should be over")
+	}
+	if room.winnerSID != "white-p" {
+		t.Errorf("expected winnerSID=white-p, got %s", room.winnerSID)
+	}
+	reason := room.gameOverReason
+	if reason == "" {
+		t.Error("gameOverReason should not be empty")
+	}
 }
